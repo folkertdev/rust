@@ -2758,6 +2758,33 @@ macro_rules! uint_impl {
             }
         }
 
+        /// Returns `true` if and only if `self == rhs * k` for some `k`.
+        ///
+        /// # Examples
+        ///
+        /// Basic usage:
+        ///
+        /// ```
+        /// #![feature(int_is_multiple_of)]
+        #[doc = concat!("assert!(6_", stringify!($SelfT), ".is_multiple_of(2));")]
+        #[doc = concat!("assert!(!5_", stringify!($SelfT), ".is_multiple_of(2));")]
+        ///
+        #[doc = concat!("assert!(0_", stringify!($SelfT), ".is_multiple_of(0));")]
+        #[doc = concat!("assert!(!6_", stringify!($SelfT), ".is_multiple_of(0));")]
+        /// ```
+        #[unstable(feature = "int_is_multiple_of", issue = "none")]
+        #[rustc_const_unstable(feature = "const_int_is_multiple_of", issue = "none")]
+        #[rustc_allow_const_fn_unstable(const_int_is_multiple_of)]
+        #[must_use]
+        #[inline]
+        #[rustc_inherit_overflow_checks]
+        pub const fn is_multiple_of(self, rhs: Self) -> bool {
+            match rhs {
+                0 => self == 0,
+                _ => self % rhs == 0,
+            }
+        }
+
         /// Returns `true` if and only if `self == 2^k` for some `k`.
         ///
         /// # Examples

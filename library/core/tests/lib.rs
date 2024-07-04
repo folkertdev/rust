@@ -102,6 +102,7 @@
 #![cfg_attr(target_has_atomic = "128", feature(integer_atomics))]
 #![cfg_attr(test, feature(cfg_match))]
 #![feature(int_roundings)]
+#![feature(int_is_multiple_of)]
 #![feature(split_array)]
 #![feature(strict_provenance)]
 #![feature(strict_provenance_atomic_ptr)]
