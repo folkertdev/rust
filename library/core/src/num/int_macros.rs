@@ -3023,6 +3023,39 @@ macro_rules! int_impl {
             }
         }
 
+        /// Returns `true` if and only if `self == rhs * k` for some `k`.
+        ///
+        /// # Examples
+        ///
+        /// Basic usage:
+        ///
+        /// ```
+        /// #![feature(is_multiple_of)]
+        #[doc = concat!("assert!(6_", stringify!($SelfT), ".is_multiple_of(2));")]
+        #[doc = concat!("assert!(6_", stringify!($SelfT), ".is_multiple_of(-2));")]
+        #[doc = concat!("assert!(-6_", stringify!($SelfT), ".is_multiple_of(2));")]
+        #[doc = concat!("assert!(-6_", stringify!($SelfT), ".is_multiple_of(-2));")]
+        #[doc = concat!("assert!(!5_", stringify!($SelfT), ".is_multiple_of(2));")]
+        ///
+        #[doc = concat!("assert!(0_", stringify!($SelfT), ".is_multiple_of(0));")]
+        #[doc = concat!("assert!(!6_", stringify!($SelfT), ".is_multiple_of(0));")]
+        ///
+        #[doc = concat!("assert!(", stringify!($SelfT), "::MIN.is_multiple_of(-1));")]
+        /// ```
+        #[unstable(feature = "is_multiple_of", issue = "none")]
+        #[must_use]
+        #[inline]
+        #[rustc_inherit_overflow_checks]
+        pub const fn is_multiple_of(self, rhs: Self) -> bool {
+            match rhs {
+                // prevent division by zero
+                0 => self == 0,
+                // prevent overflow when self == Self::MIN
+                -1 => true,
+                _ => self % rhs == 0,
+            }
+        }
+
         /// Calculates the middle point of `self` and `rhs`.
         ///
         /// `midpoint(a, b)` is `(a + b) >> 1` as if it were performed in a
