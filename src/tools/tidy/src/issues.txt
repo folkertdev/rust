@@ -267,7 +267,6 @@ ui/async-await/return-type-notation/issue-110963-early.rs
 ui/async-await/return-type-notation/issue-110963-late.rs
 ui/async-await/track-caller/issue-105134.rs
 ui/attributes/issue-100631.rs
-ui/attributes/issue-105594-invalid-attr-validation.rs
 ui/attributes/issue-115264-expr-field.rs
 ui/attributes/issue-115264-pat-field.rs
 ui/attributes/issue-40962.rs
@@ -467,7 +466,6 @@ ui/closures/issue-87814-2.rs
 ui/closures/issue-90871.rs
 ui/closures/issue-97607.rs
 ui/closures/issue-99565.rs
-ui/cmse-nonsecure/cmse-nonsecure-entry/issue-83475.rs
 ui/codegen/auxiliary/issue-97708-aux.rs
 ui/codegen/issue-101585-128bit-repeat.rs
 ui/codegen/issue-16602-1.rs
