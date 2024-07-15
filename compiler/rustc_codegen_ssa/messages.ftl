@@ -16,6 +16,22 @@ codegen_ssa_cgu_not_recorded =
 
 codegen_ssa_check_installed_visual_studio = please ensure that Visual Studio 2017 or later, or Build Tools for Visual Studio were installed with the Visual C++ option.
 
+codegen_ssa_cmse_nonsecure_entry_inputs_too_large =
+    arguments for function marked with `#[cmse_nonsecure_entry]` are too large to pass via registers
+    .label = this function's parameters don't fit in the available registers
+    .note = functions marked with `#[cmse_nonsecure_entry]` must pass all their arguments via the 4 32-bit available argument registers
+
+codegen_ssa_cmse_nonsecure_entry_output_too_large =
+    output for function marked with `#[cmse_nonsecure_entry]` is too large to pass via registers
+    .label = this function's output doesn't fit in the available registers
+    .note = functions marked with `#[cmse_nonsecure_entry]` must pass their output via registers
+
+codegen_ssa_cmse_stack_spill =
+    arguments for `C-cmse-nonsecure-call` function too large to pass via registers
+    .label = this function has type `{$fn_sig}`
+    .function_type = but its arguments don't fit in the available registers
+    .note = functions with the `C-cmse-nonsecure-call` ABI must pass all their arguments via the 4 32-bit available argument registers, but this function's arguments don't fit
+
 codegen_ssa_compiler_builtins_cannot_call =
     `compiler_builtins` cannot call functions through upstream monomorphizations; encountered invalid call from `{$caller}` to `{$callee}`
 

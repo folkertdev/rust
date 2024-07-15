@@ -8,7 +8,7 @@ use rustc_hir::{lang_items, weak_lang_items::WEAK_LANG_ITEMS, LangItem};
 use rustc_middle::middle::codegen_fn_attrs::{CodegenFnAttrFlags, CodegenFnAttrs};
 use rustc_middle::mir::mono::Linkage;
 use rustc_middle::query::Providers;
-use rustc_middle::ty::{self as ty, TyCtxt};
+use rustc_middle::ty::{self as ty, FnSig, ParamEnv, TyCtxt};
 use rustc_session::{lint, parse::feature_err};
 use rustc_span::symbol::Ident;
 use rustc_span::{sym, Span};
@@ -17,7 +17,10 @@ use rustc_target::spec::{abi, SanitizerSet};
 use crate::errors;
 use crate::target_features::from_target_feature;
 use crate::{
-    errors::{ExpectedCoverageSymbol, ExpectedUsedSymbol},
+    errors::{
+        CmseNonSecureEntryInputsTooLarge, CmseNonSecureEntryOutputTooLarge, ExpectedCoverageSymbol,
+        ExpectedUsedSymbol,
+    },
     target_features::check_target_feature_trait_unsafe,
 };
 
@@ -57,7 +60,8 @@ fn codegen_fn_attrs(tcx: TyCtxt<'_>, did: LocalDefId) -> CodegenFnAttrs {
         );
     }
 
-    let attrs = tcx.hir().attrs(tcx.local_def_id_to_hir_id(did));
+    let hir_id = tcx.local_def_id_to_hir_id(did);
+    let attrs = tcx.hir().attrs(hir_id);
     let mut codegen_fn_attrs = CodegenFnAttrs::new();
     if tcx.should_inherit_track_caller(did) {
         codegen_fn_attrs.flags |= CodegenFnAttrFlags::TRACK_CALLER;
@@ -225,6 +229,90 @@ fn codegen_fn_attrs(tcx: TyCtxt<'_>, did: LocalDefId) -> CodegenFnAttrs {
                     struct_span_code_err!(tcx.dcx(), attr.span, E0775, "`#[cmse_nonsecure_entry]` is only valid for targets with the TrustZone-M extension")
                     .emit();
                 }
+
+                struct CmseValid {
+                    is_valid_inputs: bool,
+                    is_valid_output: bool,
+                }
+
+                // CMSE functions have special requirements on the size/type of their inputs and outputs
+                fn validate_fn_sig_cmse<'a>(tcx: TyCtxt<'a>, fn_sig: FnSig<'a>) -> CmseValid {
+                    // the available argument space is 16 bytes (4 32-bit registers) in total
+                    const AVAILABLE_INPUTS_SPACE: u64 = 16;
+
+                    let Ok(ret_layout) = tcx.layout_of(ParamEnv::reveal_all().and(fn_sig.output()))
+                    else {
+                        rustc_middle::bug!()
+                    };
+
+                    //                    // unwrap any `repr(transparent)` wrappers
+                    //                    loop {
+                    //                        if ret_layout.is_transparent() {
+                    //                            match ret_layout.non_1zst_field(&tcx) {
+                    //                                None => break,
+                    //                                Some((_, layout)) => ret_layout = layout,
+                    //                            }
+                    //                        } else {
+                    //                            break;
+                    //                        }
+                    //                    }
+
+                    //                    use rustc_middle::ty::{FloatTy, IntTy, Ty, UintTy};
+                    //                    let layout_i64 = tcx.layout_of(tcx.types.i64).unwrap();
+                    //                    let layout_u64 = tcx.layout_of(tcx.types.u64).unwrap();
+                    //                    let layout_f64 = tcx.layout_of(tcx.types.f64).unwrap();
+
+                    // A Composite Type larger than 4 bytes is stored in memory at an address
+                    // passed as an extra argument when the function was called. That is not allowed
+                    // for cmse_nonsecure_entry functions.
+                    let is_valid_output = ret_layout.layout.size().bytes() <= 4;
+                    // || [layout_i64, layout_u64, layout_f64].contains(&ret_layout);
+
+                    let mut accum = 0u64;
+
+                    for arg_def in fn_sig.inputs().iter() {
+                        let Ok(layout) = tcx.layout_of(ParamEnv::reveal_all().and(*arg_def)) else {
+                            continue;
+                        };
+
+                        let align = layout.layout.align().abi.bytes();
+                        let size = layout.layout.size().bytes();
+
+                        accum += size;
+                        accum = accum.next_multiple_of(Ord::max(4, align));
+                    }
+
+                    CmseValid { is_valid_inputs: accum <= AVAILABLE_INPUTS_SPACE, is_valid_output }
+                }
+
+                // the arguments must fit in 4 32-bit registers
+                if let Some(fn_sig) = fn_sig() {
+                    let fn_sig: FnSig<'_> = fn_sig.skip_binder().skip_binder();
+                    let cmse_valid = validate_fn_sig_cmse(tcx, fn_sig);
+
+                    if !(cmse_valid.is_valid_inputs && cmse_valid.is_valid_output) {
+                        let arg_list_span = 'blk: {
+                            // Get the HIR node corresponding to the HirId
+                            if let Some(fn_sig) = tcx.hir().fn_sig_by_hir_id(hir_id) {
+                                // Get the span of the argument list
+                                break 'blk Some(fn_sig.span);
+                            }
+
+                            None
+                        };
+
+                        let span = attr.span.to(arg_list_span.unwrap());
+
+                        if !cmse_valid.is_valid_inputs {
+                            tcx.dcx().emit_err(CmseNonSecureEntryInputsTooLarge { span });
+                        }
+
+                        if !cmse_valid.is_valid_output {
+                            tcx.dcx().emit_err(CmseNonSecureEntryOutputTooLarge { span });
+                        }
+                    }
+                }
+
                 codegen_fn_attrs.flags |= CodegenFnAttrFlags::CMSE_NONSECURE_ENTRY
             }
             sym::thread_local => codegen_fn_attrs.flags |= CodegenFnAttrFlags::THREAD_LOCAL,

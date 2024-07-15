@@ -5,7 +5,7 @@ use super::{CachedLlbb, FunctionCx, LocalRef};
 
 use crate::base;
 use crate::common::{self, IntPredicate};
-use crate::errors::CompilerBuiltinsCannotCall;
+use crate::errors::{CmseStackSpill, CompilerBuiltinsCannotCall};
 use crate::meth;
 use crate::traits::*;
 use crate::MemFlags;
@@ -21,7 +21,7 @@ use rustc_middle::{bug, span_bug};
 use rustc_monomorphize::is_call_from_compiler_builtins_to_upstream_monomorphization;
 use rustc_session::config::OptLevel;
 use rustc_span::{source_map::Spanned, sym, Span};
-use rustc_target::abi::call::{ArgAbi, FnAbi, PassMode, Reg};
+use rustc_target::abi::call::{ArgAbi, Conv, FnAbi, PassMode, Reg};
 use rustc_target::abi::{self, HasDataLayout, WrappingRange};
 use rustc_target::spec::abi::Abi;
 use tracing::{debug, info};
@@ -181,6 +181,48 @@ impl<'a, 'tcx> TerminatorCodegenHelper<'tcx> {
                     return MergingSucc::False;
                 }
             }
+        }
+
+        // the arguments must fit in 4 32-bit registers
+        if let Conv::CCmseNonSecureCall = fn_abi.conv {
+            //            let did = fx.instance.def_id();
+            //
+            //            use rustc_hir::def::DefKind;
+            //            use DefKind::*;
+            //
+            //            let tcx = bx.tcx();
+            //
+            //            let def_kind = tcx.def_kind(did);
+            //            let fn_sig = if let Fn | AssocFn | Variant | Ctor(..) = def_kind {
+            //                tcx.fn_sig(did)
+            //            } else {
+            //                bug!()
+            //            };
+
+            /*
+            let hir_id = tcx.def_id_to_hir_id(did);
+            let arg_list_span = 'blk: {
+                // Get the HIR node corresponding to the HirId
+                if let Some(fn_sig) = tcx.hir().fn_sig_by_hir_id(hir_id) {
+                    // Get the span of the argument list
+                    break 'blk Some(fn_sig.span);
+                }
+                None
+            };
+
+            // the available argument space is 16 bytes (4 32-bit registers) in total
+            let available_space = 16;
+
+            if accum > available_space {
+                rustc_errors::struct_span_code_err!(
+                            tcx.dcx(),
+                            arg_list_span.unwrap(),
+                            rustc_errors::E0776,
+                            "arguments to functions marked as `#[cmse_nonsecure_entry]` must fit in 4 32-bit registers"
+                        )
+                        .emit();
+            }
+            */
         }
 
         // If there is a cleanup block and the function we're calling can unwind, then
@@ -834,6 +876,34 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
 
         // Create the callee. This is a fn ptr or zero-sized and hence a kind of scalar.
         let callee = self.codegen_operand(bx, func);
+
+        let fn_sig = callee.layout.ty.fn_sig(bx.tcx()).skip_binder();
+
+        if let rustc_target::spec::abi::Abi::CCmseNonSecureCall = fn_sig.abi {
+            let mut accum = 0u64;
+
+            for arg_def in fn_sig.inputs().iter() {
+                let Ok(layout) =
+                    bx.tcx().layout_of(rustc_middle::ty::ParamEnv::reveal_all().and(*arg_def))
+                else {
+                    continue;
+                };
+
+                let align = layout.layout.align().abi.bytes();
+                let size = layout.layout.size().bytes();
+
+                accum += size;
+                accum = accum.next_multiple_of(Ord::max(4, align));
+            }
+
+            // the available argument space is 16 bytes (4 32-bit registers) in total
+            let available_space = 16;
+
+            if accum > available_space {
+                let err = CmseStackSpill { span, func_span: func.span(self.mir), fn_sig };
+                bx.tcx().dcx().emit_err(err);
+            }
+        }
 
         let (instance, mut llfn) = match *callee.layout.ty.kind() {
             ty::FnDef(def_id, args) => (

@@ -8,7 +8,7 @@ use rustc_errors::{
 };
 use rustc_macros::Diagnostic;
 use rustc_middle::ty::layout::LayoutError;
-use rustc_middle::ty::Ty;
+use rustc_middle::ty::{FnSig, Ty};
 use rustc_span::{Span, Symbol};
 use rustc_type_ir::FloatTy;
 use std::borrow::Cow;
@@ -1039,4 +1039,34 @@ pub struct ErrorCreatingRemarkDir {
 pub struct CompilerBuiltinsCannotCall {
     pub caller: String,
     pub callee: String,
+}
+
+#[derive(Diagnostic)]
+#[diag(codegen_ssa_cmse_nonsecure_entry_inputs_too_large)]
+#[note]
+pub struct CmseNonSecureEntryInputsTooLarge {
+    #[primary_span]
+    #[label]
+    pub span: Span,
+}
+
+#[derive(Diagnostic)]
+#[diag(codegen_ssa_cmse_nonsecure_entry_output_too_large)]
+#[note]
+pub struct CmseNonSecureEntryOutputTooLarge {
+    #[primary_span]
+    #[label]
+    pub span: Span,
+}
+
+#[derive(Diagnostic)]
+#[diag(codegen_ssa_cmse_stack_spill)]
+#[note]
+pub struct CmseStackSpill<'tcx> {
+    #[primary_span]
+    #[label(codegen_ssa_function_type)]
+    pub span: Span,
+    #[label]
+    pub func_span: Span,
+    pub fn_sig: FnSig<'tcx>,
 }
