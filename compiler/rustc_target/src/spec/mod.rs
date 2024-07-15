@@ -1251,9 +1251,9 @@ impl StackProbeType {
                     .and_then(|o| o.as_array())
                     .ok_or_else(|| "expected `min-llvm-version-for-inline` to be an array")?;
                 let mut iter = min_version.into_iter().map(|v| {
-                    let int = v.as_u64().ok_or_else(
-                        || "expected `min-llvm-version-for-inline` values to be integers",
-                    )?;
+                    let int = v.as_u64().ok_or_else(|| {
+                        "expected `min-llvm-version-for-inline` values to be integers"
+                    })?;
                     u32::try_from(int)
                         .map_err(|_| "`min-llvm-version-for-inline` values don't convert to u32")
                 });
@@ -2657,6 +2657,7 @@ impl Target {
             X86Interrupt => ["x86", "x86_64"].contains(&&self.arch[..]),
             Aapcs { .. } => "arm" == self.arch,
             CCmseNonSecureCall => ["arm", "aarch64"].contains(&&self.arch[..]),
+            CCmseNonSecureEntry => ["arm", "aarch64"].contains(&&self.arch[..]),
             Win64 { .. } | SysV64 { .. } => self.arch == "x86_64",
             PtxKernel => self.arch == "nvptx64",
             Msp430Interrupt => self.arch == "msp430",
