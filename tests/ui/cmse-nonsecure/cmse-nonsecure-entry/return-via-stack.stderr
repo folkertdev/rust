@@ -1,0 +1,4 @@
+error: <unknown>:0:0: in function f1 void (ptr): secure entry function would return value through pointer
+
+error: aborting due to 1 previous error
+
