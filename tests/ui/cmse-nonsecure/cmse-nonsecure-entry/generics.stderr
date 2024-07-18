@@ -1,0 +1,39 @@
+error[E0798]: functions with the `"C-cmse-nonsecure-entry"` ABI cannot contain generics in their type
+  --> $DIR/generics.rs:31:1
+   |
+LL | / extern "C-cmse-nonsecure-entry" fn introduced_generic<U: Copy>(
+LL | |
+LL | |     _: U,
+LL | |     _: u32,
+LL | |     _: u32,
+LL | |     _: u32,
+LL | | ) -> u64 {
+   | |________^
+
+error[E0798]: functions with the `"C-cmse-nonsecure-entry"` ABI cannot contain generics in their type
+  --> $DIR/generics.rs:41:1
+   |
+LL | extern "C-cmse-nonsecure-entry" fn impl_trait(_: impl Copy, _: u32, _: u32, _: u32) -> u64 {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0798]: functions with the `"C-cmse-nonsecure-entry"` ABI cannot contain generics in their type
+  --> $DIR/generics.rs:15:5
+   |
+LL |     extern "C-cmse-nonsecure-entry" fn ambient_generic(_: T, _: u32, _: u32, _: u32) -> u64 {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0798]: functions with the `"C-cmse-nonsecure-entry"` ABI cannot contain generics in their type
+  --> $DIR/generics.rs:20:5
+   |
+LL | /     extern "C-cmse-nonsecure-entry" fn ambient_generic_nested(
+LL | |
+LL | |         _: Wrapper<T>,
+LL | |         _: u32,
+LL | |         _: u32,
+LL | |         _: u32,
+LL | |     ) -> u64 {
+   | |____________^
+
+error: aborting due to 4 previous errors
+
+For more information about this error, try `rustc --explain E0798`.
