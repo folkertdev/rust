@@ -1045,6 +1045,7 @@ pub enum Abi {
     AvrInterrupt,
     AvrNonBlockingInterrupt,
     CCmseNonSecureCall,
+    CCmseNonSecureEntry,
     System { unwind: bool },
     RustIntrinsic,
     RustCall,

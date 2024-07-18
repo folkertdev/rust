@@ -748,6 +748,7 @@ pub enum Conv {
     // Target-specific calling conventions.
     ArmAapcs,
     CCmseNonSecureCall,
+    CCmseNonSecureEntry,
 
     Msp430Intr,
 
@@ -942,6 +943,7 @@ impl FromStr for Conv {
             "RustCold" => Ok(Conv::Rust),
             "ArmAapcs" => Ok(Conv::ArmAapcs),
             "CCmseNonSecureCall" => Ok(Conv::CCmseNonSecureCall),
+            "CCmseNonSecureEntry" => Ok(Conv::CCmseNonSecureEntry),
             "Msp430Intr" => Ok(Conv::Msp430Intr),
             "PtxKernel" => Ok(Conv::PtxKernel),
             "X86Fastcall" => Ok(Conv::X86Fastcall),
