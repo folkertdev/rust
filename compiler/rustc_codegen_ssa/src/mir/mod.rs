@@ -21,6 +21,7 @@ pub mod coverageinfo;
 pub mod debuginfo;
 mod intrinsic;
 mod locals;
+mod naked_asm;
 pub mod operand;
 pub mod place;
 mod rvalue;
@@ -165,6 +166,11 @@ pub fn codegen_mir<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     assert!(!instance.args.has_infer());
 
     let llfn = cx.get_fn(instance);
+
+    if cx.tcx().has_attr(instance.def.def_id(), rustc_span::sym::naked) {
+        crate::mir::naked_asm::codegen_naked_asm::<Bx>(cx, instance);
+        return;
+    }
 
     let mir = cx.tcx().instance_mir(instance.def);
 
