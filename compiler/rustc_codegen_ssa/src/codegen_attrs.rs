@@ -644,7 +644,11 @@ fn codegen_fn_attrs(tcx: TyCtxt<'_>, did: LocalDefId) -> CodegenFnAttrs {
     }
 
     if codegen_fn_attrs.flags.contains(CodegenFnAttrFlags::NAKED) {
-        codegen_fn_attrs.inline = InlineAttr::Never;
+        // naked functions are generated using an extern function and global assembly. To
+        // make sure that these can be linked together by LLVM, the linkage should be external,
+        // unless the user explicitly configured something else (in which case any linker errors
+        // they encounter are their responsibility).
+        codegen_fn_attrs.linkage = codegen_fn_attrs.linkage.or(Some(Linkage::External));
     }
 
     // Weak lang items have the same semantics as "std internal" symbols in the
