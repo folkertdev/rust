@@ -1,7 +1,9 @@
 use crate::common;
 use crate::mir::FunctionCx;
-use crate::traits::{AsmMethods, BuilderMethods, GlobalAsmOperandRef};
+use crate::traits::{AsmMethods, BuilderMethods, GlobalAsmOperandRef, MiscMethods};
+use rustc_attr::InstructionSetAttr;
 use rustc_middle::bug;
+use rustc_middle::mir::mono::{Linkage, MonoItem, MonoItemData, Visibility};
 use rustc_middle::mir::InlineAsmOperand;
 use rustc_middle::ty;
 use rustc_middle::ty::layout::{HasTyCtxt, LayoutOf};
@@ -29,7 +31,8 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         let operands: Vec<_> =
             operands.iter().map(|op| self.inline_to_global_operand(op)).collect();
 
-        let (begin, end) = crate::mir::naked_asm::prefix_and_suffix(cx.tcx(), instance);
+        let item_data = cx.codegen_unit().items().get(&MonoItem::Fn(instance)).unwrap();
+        let (begin, end) = crate::mir::naked_asm::prefix_and_suffix(cx.tcx(), instance, item_data);
 
         let mut template_vec = Vec::new();
         template_vec.push(rustc_ast::ast::InlineAsmTemplatePiece::String(begin));
@@ -90,7 +93,33 @@ impl AsmBinaryFormat {
     }
 }
 
-fn prefix_and_suffix<'tcx>(tcx: TyCtxt<'tcx>, instance: Instance<'tcx>) -> (String, String) {
+fn linkage_directive(linkage: Linkage) -> Option<&'static str> {
+    if true {
+        // this is required. emitting nothing or .weak will emit
+        //
+        // > Global is external, but doesn't have external or weak linkage!
+        //
+        // and then aborts compilation
+        return Some(".globl");
+    }
+
+    match linkage {
+        Linkage::External => Some(".globl"),
+        Linkage::WeakAny | Linkage::WeakODR => Some(".weak"),
+        Linkage::LinkOnceAny | Linkage::LinkOnceODR => Some(".weak"),
+        Linkage::Internal | Linkage::Private => None, // just doesn't emit any attribute
+        Linkage::ExternalWeak => None,                // terminates with sigill on godbolt
+        Linkage::AvailableExternally => None,         // does not even emit the definition
+        Linkage::Appending => None,                   // only valid on global variables
+        Linkage::Common => None,                      // function may not have common linkage
+    }
+}
+
+fn prefix_and_suffix<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    instance: Instance<'tcx>,
+    item_data: &MonoItemData,
+) -> (String, String) {
     use std::fmt::Write;
 
     let target = &tcx.sess.target;
@@ -109,19 +138,16 @@ fn prefix_and_suffix<'tcx>(tcx: TyCtxt<'tcx>, instance: Instance<'tcx>) -> (Stri
         .and_then(|attr| attr.value_str())
         .map(|attr| attr.as_str().to_string());
 
-    let instruction_set =
-        tcx.get_attr(instance.def.def_id(), sym::instruction_set).and_then(|attr| attr.value_str());
-
+    let attrs = tcx.codegen_fn_attrs(instance.def_id());
     let (arch_prefix, arch_suffix) = if is_arm {
         (
-            match instruction_set {
+            match attrs.instruction_set {
                 None => match is_thumb {
                     true => ".thumb\n.thumb_func",
                     false => ".arm",
                 },
-                Some(sym::a32) => ".arm",
-                Some(sym::t32) => ".thumb\n.thumb_func",
-                Some(other) => bug!("invalid instruction set: {other}"),
+                Some(InstructionSetAttr::ArmA32) => ".arm",
+                Some(InstructionSetAttr::ArmT32) => ".thumb\n.thumb_func",
             },
             match is_thumb {
                 true => ".thumb",
@@ -150,10 +176,14 @@ fn prefix_and_suffix<'tcx>(tcx: TyCtxt<'tcx>, instance: Instance<'tcx>) -> (Stri
 
             writeln!(begin, ".pushsection {section},\"ax\", {progbits}").unwrap();
             writeln!(begin, ".balign 4").unwrap();
-            writeln!(begin, ".globl {asm_name}").unwrap();
-            writeln!(begin, ".hidden {asm_name}").unwrap();
+            if let Some(linkage) = linkage_directive(item_data.linkage) {
+                writeln!(begin, "{linkage} {asm_name}").unwrap();
+            }
+            if let Visibility::Hidden = item_data.visibility {
+                writeln!(begin, ".hidden {asm_name}").unwrap();
+            }
             writeln!(begin, ".type {asm_name}, {function}").unwrap();
-            if let Some(instruction_set) = instruction_set {
+            if let Some(instruction_set) = attrs.instruction_set {
                 writeln!(begin, "{}", instruction_set.as_str()).unwrap();
             }
             if !arch_prefix.is_empty() {
@@ -172,9 +202,13 @@ fn prefix_and_suffix<'tcx>(tcx: TyCtxt<'tcx>, instance: Instance<'tcx>) -> (Stri
             let section = opt_section.unwrap_or("__TEXT,__text".to_string());
             writeln!(begin, ".pushsection {},regular,pure_instructions", section).unwrap();
             writeln!(begin, ".balign 4").unwrap();
-            writeln!(begin, ".globl {asm_name}").unwrap();
-            writeln!(begin, ".private_extern {asm_name}").unwrap();
-            if let Some(instruction_set) = instruction_set {
+            if let Some(linkage) = linkage_directive(item_data.linkage) {
+                writeln!(begin, "{linkage} {asm_name}").unwrap();
+            }
+            if let Visibility::Hidden = item_data.visibility {
+                writeln!(begin, ".private_extern {asm_name}").unwrap();
+            }
+            if let Some(instruction_set) = attrs.instruction_set {
                 writeln!(begin, "{}", instruction_set.as_str()).unwrap();
             }
             writeln!(begin, "{asm_name}:").unwrap();
@@ -189,12 +223,14 @@ fn prefix_and_suffix<'tcx>(tcx: TyCtxt<'tcx>, instance: Instance<'tcx>) -> (Stri
             let section = opt_section.unwrap_or(format!(".text.{asm_name}"));
             writeln!(begin, ".pushsection {},\"xr\"", section).unwrap();
             writeln!(begin, ".balign 4").unwrap();
-            writeln!(begin, ".globl {asm_name}").unwrap();
+            if let Some(linkage) = linkage_directive(item_data.linkage) {
+                writeln!(begin, "{linkage} {asm_name}").unwrap();
+            }
             writeln!(begin, ".def {asm_name}").unwrap();
             writeln!(begin, ".scl 2").unwrap();
             writeln!(begin, ".type 32").unwrap();
             writeln!(begin, ".endef {asm_name}").unwrap();
-            if let Some(instruction_set) = instruction_set {
+            if let Some(instruction_set) = attrs.instruction_set {
                 writeln!(begin, "{}", instruction_set.as_str()).unwrap();
             }
             writeln!(begin, "{asm_name}:").unwrap();
