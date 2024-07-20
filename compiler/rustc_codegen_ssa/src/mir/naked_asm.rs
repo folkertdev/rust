@@ -109,15 +109,6 @@ impl AsmBinaryFormat {
 }
 
 fn linkage_directive(linkage: Linkage) -> Option<&'static str> {
-    if true {
-        // this is required. emitting nothing or .weak will emit
-        //
-        // > Global is external, but doesn't have external or weak linkage!
-        //
-        // and then aborts compilation
-        return Some(".globl");
-    }
-
     match linkage {
         Linkage::External => Some(".globl"),
         Linkage::WeakAny | Linkage::WeakODR => Some(".weak"),
