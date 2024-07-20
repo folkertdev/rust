@@ -109,10 +109,7 @@ fn codegen_fn_attrs(tcx: TyCtxt<'_>, did: LocalDefId) -> CodegenFnAttrs {
             sym::rustc_allocator_zeroed => {
                 codegen_fn_attrs.flags |= CodegenFnAttrFlags::ALLOCATOR_ZEROED
             }
-            sym::naked => {
-                // this attribute is ignored during codegen, because a function marked as naked is
-                // turned into a global asm block.
-            }
+            sym::naked => codegen_fn_attrs.flags |= CodegenFnAttrFlags::NAKED,
             sym::no_mangle => {
                 if tcx.opt_item_name(did.to_def_id()).is_some() {
                     codegen_fn_attrs.flags |= CodegenFnAttrFlags::NO_MANGLE

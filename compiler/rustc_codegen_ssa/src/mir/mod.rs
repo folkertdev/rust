@@ -172,7 +172,7 @@ pub fn codegen_mir<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     let fn_abi = cx.fn_abi_of_instance(instance, ty::List::empty());
     debug!("fn_abi: {:?}", fn_abi);
 
-    if cx.tcx().has_attr(instance.def.def_id(), rustc_span::sym::naked) {
+    if cx.tcx().codegen_fn_attrs(instance.def_id()).flags.contains(CodegenFnAttrFlags::NAKED) {
         let cached_llbbs = IndexVec::new();
 
         let fx: FunctionCx<'_, '_, Bx> = FunctionCx {

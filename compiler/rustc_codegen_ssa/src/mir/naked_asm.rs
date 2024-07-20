@@ -8,8 +8,6 @@ use rustc_middle::mir::InlineAsmOperand;
 use rustc_middle::ty;
 use rustc_middle::ty::layout::{HasTyCtxt, LayoutOf};
 use rustc_middle::ty::{Instance, TyCtxt};
-
-use rustc_span::sym;
 use rustc_target::asm::InlineAsmArch;
 
 impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
@@ -133,12 +131,9 @@ fn prefix_and_suffix<'tcx>(
 
     let asm_name = format!("{}{}", if mangle { "_" } else { "" }, tcx.symbol_name(instance).name);
 
-    let opt_section = tcx
-        .get_attr(instance.def.def_id(), sym::link_section)
-        .and_then(|attr| attr.value_str())
-        .map(|attr| attr.as_str().to_string());
-
     let attrs = tcx.codegen_fn_attrs(instance.def_id());
+    let link_section = attrs.link_section.map(|symbol| symbol.as_str().to_string());
+
     let (arch_prefix, arch_suffix) = if is_arm {
         (
             match attrs.instruction_set {
@@ -162,7 +157,7 @@ fn prefix_and_suffix<'tcx>(
     let mut end = String::new();
     match AsmBinaryFormat::from_target(&tcx.sess.target) {
         AsmBinaryFormat::Elf => {
-            let section = opt_section.unwrap_or(format!(".text.{asm_name}"));
+            let section = link_section.unwrap_or(format!(".text.{asm_name}"));
 
             let progbits = match is_arm {
                 true => "%progbits",
@@ -199,7 +194,7 @@ fn prefix_and_suffix<'tcx>(
             }
         }
         AsmBinaryFormat::Macho => {
-            let section = opt_section.unwrap_or("__TEXT,__text".to_string());
+            let section = link_section.unwrap_or("__TEXT,__text".to_string());
             writeln!(begin, ".pushsection {},regular,pure_instructions", section).unwrap();
             writeln!(begin, ".balign 4").unwrap();
             if let Some(linkage) = linkage_directive(item_data.linkage) {
@@ -220,7 +215,7 @@ fn prefix_and_suffix<'tcx>(
             }
         }
         AsmBinaryFormat::Coff => {
-            let section = opt_section.unwrap_or(format!(".text.{asm_name}"));
+            let section = link_section.unwrap_or(format!(".text.{asm_name}"));
             writeln!(begin, ".pushsection {},\"xr\"", section).unwrap();
             writeln!(begin, ".balign 4").unwrap();
             if let Some(linkage) = linkage_directive(item_data.linkage) {
