@@ -2,7 +2,7 @@ use crate::common;
 use crate::traits::{AsmMethods, BuilderMethods, GlobalAsmOperandRef, MiscMethods};
 use rustc_attr::InstructionSetAttr;
 use rustc_middle::bug;
-use rustc_middle::mir::mono::{Linkage, MonoItem, MonoItemData, Visibility};
+use rustc_middle::mir::mono::{MonoItem, MonoItemData, Visibility};
 use rustc_middle::mir::Body;
 use rustc_middle::mir::InlineAsmOperand;
 use rustc_middle::ty;
@@ -116,19 +116,6 @@ impl AsmBinaryFormat {
     }
 }
 
-fn linkage_directive(linkage: Linkage) -> Option<&'static str> {
-    match linkage {
-        Linkage::External => Some(".globl"),
-        Linkage::WeakAny | Linkage::WeakODR => Some(".weak"),
-        Linkage::LinkOnceAny | Linkage::LinkOnceODR => Some(".weak"),
-        Linkage::Internal | Linkage::Private => None, // just doesn't emit any attribute
-        Linkage::ExternalWeak => None,                // terminates with sigill on godbolt
-        Linkage::AvailableExternally => None,         // does not even emit the definition
-        Linkage::Appending => None,                   // only valid on global variables
-        Linkage::Common => None,                      // function may not have common linkage
-    }
-}
-
 fn prefix_and_suffix<'tcx>(
     tcx: TyCtxt<'tcx>,
     instance: Instance<'tcx>,
@@ -187,9 +174,7 @@ fn prefix_and_suffix<'tcx>(
 
             writeln!(begin, ".pushsection {section},\"ax\", {progbits}").unwrap();
             writeln!(begin, ".balign 4").unwrap();
-            if let Some(linkage) = linkage_directive(item_data.linkage) {
-                writeln!(begin, "{linkage} {asm_name}").unwrap();
-            }
+            writeln!(begin, ".globl {asm_name}").unwrap();
             if let Visibility::Hidden = item_data.visibility {
                 writeln!(begin, ".hidden {asm_name}").unwrap();
             }
@@ -213,9 +198,7 @@ fn prefix_and_suffix<'tcx>(
             let section = link_section.unwrap_or("__TEXT,__text".to_string());
             writeln!(begin, ".pushsection {},regular,pure_instructions", section).unwrap();
             writeln!(begin, ".balign 4").unwrap();
-            if let Some(linkage) = linkage_directive(item_data.linkage) {
-                writeln!(begin, "{linkage} {asm_name}").unwrap();
-            }
+            writeln!(begin, ".globl {asm_name}").unwrap();
             if let Visibility::Hidden = item_data.visibility {
                 writeln!(begin, ".private_extern {asm_name}").unwrap();
             }
@@ -234,9 +217,7 @@ fn prefix_and_suffix<'tcx>(
             let section = link_section.unwrap_or(format!(".text.{asm_name}"));
             writeln!(begin, ".pushsection {},\"xr\"", section).unwrap();
             writeln!(begin, ".balign 4").unwrap();
-            if let Some(linkage) = linkage_directive(item_data.linkage) {
-                writeln!(begin, "{linkage} {asm_name}").unwrap();
-            }
+            writeln!(begin, ".globl {asm_name}").unwrap();
             writeln!(begin, ".def {asm_name}").unwrap();
             writeln!(begin, ".scl 2").unwrap();
             writeln!(begin, ".type 32").unwrap();
