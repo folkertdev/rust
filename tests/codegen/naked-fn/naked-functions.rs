@@ -129,3 +129,19 @@ pub unsafe extern "C" fn naked_with_args_and_return(a: isize, b: isize) -> isize
         asm!("adds r0, r0, r1", "bx lr", options(noreturn))
     }
 }
+
+// linux:   .pushsection .text.some_different_name,\22ax\22, @progbits
+// macos:   .pushsection .text.some_different_name,regular,pure_instructions
+// windows: .pushsection .text.some_different_name,\22xr\22
+// thumb:   .pushsection .text.some_different_name,\22ax\22, %progbits
+// CHECK-LABEL: test_link_section:
+#[no_mangle]
+#[naked]
+#[link_section = ".text.some_different_name"]
+pub unsafe extern "C" fn test_link_section() {
+    #[cfg(not(all(target_arch = "arm", target_feature = "thumb-mode")))]
+    asm!("ret", options(noreturn));
+
+    #[cfg(all(target_arch = "arm", target_feature = "thumb-mode"))]
+    asm!("bx lr", options(noreturn));
+}
