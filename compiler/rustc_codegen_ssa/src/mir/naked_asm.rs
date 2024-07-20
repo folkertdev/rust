@@ -1,74 +1,85 @@
 use crate::common;
-use crate::mir::FunctionCx;
 use crate::traits::{AsmMethods, BuilderMethods, GlobalAsmOperandRef, MiscMethods};
 use rustc_attr::InstructionSetAttr;
 use rustc_middle::bug;
 use rustc_middle::mir::mono::{Linkage, MonoItem, MonoItemData, Visibility};
+use rustc_middle::mir::Body;
 use rustc_middle::mir::InlineAsmOperand;
 use rustc_middle::ty;
 use rustc_middle::ty::layout::{HasTyCtxt, LayoutOf};
 use rustc_middle::ty::{Instance, TyCtxt};
 use rustc_target::asm::InlineAsmArch;
 
-impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
-    pub fn codegen_naked_asm(&self, instance: Instance<'tcx>) {
-        let cx = &self.cx;
+pub fn codegen_naked_asm<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
+    cx: &'a Bx::CodegenCx,
+    mir: &Body<'tcx>,
+    instance: Instance<'tcx>,
+) {
+    let rustc_middle::mir::TerminatorKind::InlineAsm {
+        template,
+        ref operands,
+        options,
+        line_spans,
+        targets: _,
+        unwind: _,
+    } = mir.basic_blocks.iter().next().unwrap().terminator().kind
+    else {
+        bug!("#[naked] functions should always terminate with an asm! block")
+    };
 
-        let rustc_middle::mir::TerminatorKind::InlineAsm {
-            template,
-            ref operands,
-            options,
-            line_spans,
-            targets: _,
-            unwind: _,
-        } = self.mir.basic_blocks.iter().next().unwrap().terminator().kind
-        else {
-            bug!("#[naked] functions should always terminate with an asm! block")
-        };
+    let operands: Vec<_> =
+        operands.iter().map(|op| inline_to_global_operand::<Bx>(cx, instance, op)).collect();
 
-        let operands: Vec<_> =
-            operands.iter().map(|op| self.inline_to_global_operand(op)).collect();
+    let item_data = cx.codegen_unit().items().get(&MonoItem::Fn(instance)).unwrap();
+    let (begin, end) = crate::mir::naked_asm::prefix_and_suffix(cx.tcx(), instance, item_data);
 
-        let item_data = cx.codegen_unit().items().get(&MonoItem::Fn(instance)).unwrap();
-        let (begin, end) = crate::mir::naked_asm::prefix_and_suffix(cx.tcx(), instance, item_data);
+    let mut template_vec = Vec::new();
+    template_vec.push(rustc_ast::ast::InlineAsmTemplatePiece::String(begin));
+    template_vec.extend(template.iter().cloned());
+    template_vec.push(rustc_ast::ast::InlineAsmTemplatePiece::String(end));
 
-        let mut template_vec = Vec::new();
-        template_vec.push(rustc_ast::ast::InlineAsmTemplatePiece::String(begin));
-        template_vec.extend(template.iter().cloned());
-        template_vec.push(rustc_ast::ast::InlineAsmTemplatePiece::String(end));
+    cx.codegen_global_asm(&template_vec, &operands, options, line_spans);
+}
 
-        cx.codegen_global_asm(&template_vec, &operands, options, line_spans);
-    }
+fn inline_to_global_operand<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
+    cx: &'a Bx::CodegenCx,
+    instance: Instance<'tcx>,
+    op: &InlineAsmOperand<'tcx>,
+) -> GlobalAsmOperandRef<'tcx> {
+    match op {
+        InlineAsmOperand::Const { value } => {
+            let const_value = instance
+                .instantiate_mir_and_normalize_erasing_regions(
+                    cx.tcx(),
+                    ty::ParamEnv::reveal_all(),
+                    ty::EarlyBinder::bind(value.const_),
+                )
+                .eval(cx.tcx(), ty::ParamEnv::reveal_all(), value.span)
+                .expect("erroneous constant missed by mono item collection");
+            let string = common::asm_const_to_str(
+                cx.tcx(),
+                value.span,
+                const_value,
+                cx.layout_of(value.ty()),
+            );
+            GlobalAsmOperandRef::Const { string }
+        }
+        InlineAsmOperand::SymFn { value } => {
+            let instance = match value.ty().kind() {
+                &ty::FnDef(def_id, args) => Instance::new(def_id, args),
+                _ => bug!("asm sym is not a function"),
+            };
 
-    fn inline_to_global_operand(&self, op: &InlineAsmOperand<'tcx>) -> GlobalAsmOperandRef<'tcx> {
-        match op {
-            InlineAsmOperand::Const { value } => {
-                let const_value = self.eval_mir_constant(value);
-                let string = common::asm_const_to_str(
-                    self.cx.tcx(),
-                    value.span,
-                    const_value,
-                    self.cx.layout_of(value.ty()),
-                );
-                GlobalAsmOperandRef::Const { string }
-            }
-            InlineAsmOperand::SymFn { value } => {
-                let instance = match value.ty().kind() {
-                    &ty::FnDef(def_id, args) => Instance::new(def_id, args),
-                    _ => bug!("asm sym is not a function"),
-                };
-
-                GlobalAsmOperandRef::SymFn { instance }
-            }
-            InlineAsmOperand::SymStatic { def_id } => {
-                GlobalAsmOperandRef::SymStatic { def_id: *def_id }
-            }
-            InlineAsmOperand::In { .. }
-            | InlineAsmOperand::Out { .. }
-            | InlineAsmOperand::InOut { .. }
-            | InlineAsmOperand::Label { .. } => {
-                bug!("invalid operand type for naked_asm!")
-            }
+            GlobalAsmOperandRef::SymFn { instance }
+        }
+        InlineAsmOperand::SymStatic { def_id } => {
+            GlobalAsmOperandRef::SymStatic { def_id: *def_id }
+        }
+        InlineAsmOperand::In { .. }
+        | InlineAsmOperand::Out { .. }
+        | InlineAsmOperand::InOut { .. }
+        | InlineAsmOperand::Label { .. } => {
+            bug!("invalid operand type for naked_asm!")
         }
     }
 }
