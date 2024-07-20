@@ -56,12 +56,20 @@ fn inline_to_global_operand<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
                 )
                 .eval(cx.tcx(), ty::ParamEnv::reveal_all(), value.span)
                 .expect("erroneous constant missed by mono item collection");
+
+            let mono_type = instance.instantiate_mir_and_normalize_erasing_regions(
+                cx.tcx(),
+                ty::ParamEnv::reveal_all(),
+                ty::EarlyBinder::bind(value.ty()),
+            );
+
             let string = common::asm_const_to_str(
                 cx.tcx(),
                 value.span,
                 const_value,
-                cx.layout_of(value.ty()),
+                cx.layout_of(mono_type),
             );
+
             GlobalAsmOperandRef::Const { string }
         }
         InlineAsmOperand::SymFn { value } => {
