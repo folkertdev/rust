@@ -65,7 +65,13 @@ fn inline_to_global_operand<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
             GlobalAsmOperandRef::Const { string }
         }
         InlineAsmOperand::SymFn { value } => {
-            let instance = match value.ty().kind() {
+            let mono_type = instance.instantiate_mir_and_normalize_erasing_regions(
+                cx.tcx(),
+                ty::ParamEnv::reveal_all(),
+                ty::EarlyBinder::bind(value.ty()),
+            );
+
+            let instance = match mono_type.kind() {
                 &ty::FnDef(def_id, args) => Instance::new(def_id, args),
                 _ => bug!("asm sym is not a function"),
             };
