@@ -109,7 +109,14 @@ fn codegen_fn_attrs(tcx: TyCtxt<'_>, did: LocalDefId) -> CodegenFnAttrs {
             sym::rustc_allocator_zeroed => {
                 codegen_fn_attrs.flags |= CodegenFnAttrFlags::ALLOCATOR_ZEROED
             }
-            sym::naked => codegen_fn_attrs.flags |= CodegenFnAttrFlags::NAKED,
+            sym::naked => {
+                codegen_fn_attrs.flags |= CodegenFnAttrFlags::NAKED;
+
+                // naked functions are generated as an extern function, and a global asm block that
+                // contains the naked function's body. In order to link these together, the linkage
+                // of the extern function must be external.
+                codegen_fn_attrs.linkage = Some(Linkage::External);
+            }
             sym::no_mangle => {
                 if tcx.opt_item_name(did.to_def_id()).is_some() {
                     codegen_fn_attrs.flags |= CodegenFnAttrFlags::NO_MANGLE
