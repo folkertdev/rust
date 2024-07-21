@@ -563,6 +563,11 @@ fn codegen_fn_attrs(tcx: TyCtxt<'_>, did: LocalDefId) -> CodegenFnAttrs {
         }
     });
 
+    // naked function MUST NOT be inlined!
+    if codegen_fn_attrs.flags.contains(CodegenFnAttrFlags::NAKED) {
+        codegen_fn_attrs.inline = InlineAttr::Never;
+    }
+
     codegen_fn_attrs.optimize = attrs.iter().fold(OptimizeAttr::None, |ia, attr| {
         if !attr.has_name(sym::optimize) {
             return ia;
