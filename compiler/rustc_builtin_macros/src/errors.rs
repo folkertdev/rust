@@ -756,7 +756,7 @@ pub(crate) struct AsmExpectedOther {
     #[primary_span]
     #[label(builtin_macros_asm_expected_other)]
     pub(crate) span: Span,
-    pub(crate) is_global_asm: bool,
+    pub(crate) is_inline_asm: bool,
 }
 
 #[derive(Diagnostic)]
@@ -846,14 +846,15 @@ pub(crate) struct AsmOptAlreadyprovided {
 }
 
 #[derive(Diagnostic)]
-#[diag(builtin_macros_global_asm_unsupported_option)]
-pub(crate) struct GlobalAsmUnsupportedOption {
+#[diag(builtin_macros_asm_unsupported_option)]
+pub(crate) struct AsmUnsupportedOption {
     #[primary_span]
     #[label]
     pub(crate) span: Span,
     pub(crate) symbol: Symbol,
     #[suggestion(code = "", applicability = "machine-applicable", style = "tool-only")]
     pub(crate) full_span: Span,
+    pub(crate) macro_name: &'static str,
 }
 
 #[derive(Diagnostic)]
