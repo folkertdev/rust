@@ -28,7 +28,8 @@ extern "C" fn private_vanilla() -> u32 {
 
 #[naked]
 extern "C" fn private_naked() -> u32 {
-    unsafe { naked_asm!("mov rax, 42", "ret") }
+    // unsafe { naked_asm!("mov rax, 42", "ret") }
+    unsafe { naked_asm!("mov w0, #42", "ret") }
 }
 
 #[no_mangle]
@@ -39,7 +40,8 @@ pub extern "C" fn public_vanilla() -> u32 {
 #[naked]
 #[no_mangle]
 pub extern "C" fn public_naked_nongeneric() -> u32 {
-    unsafe { naked_asm!("mov rax, 42", "ret") }
+    // unsafe { naked_asm!("mov rax, 42", "ret") }
+    unsafe { naked_asm!("mov w0, #42", "ret") }
 }
 
 pub extern "C" fn public_vanilla_generic<T: TraitWithConst>() -> u32 {
@@ -48,7 +50,7 @@ pub extern "C" fn public_vanilla_generic<T: TraitWithConst>() -> u32 {
 
 #[naked]
 pub extern "C" fn public_naked_generic<T: TraitWithConst>() -> u32 {
-    unsafe { naked_asm!("mov rax, {}", "ret", const T::COUNT) }
+    unsafe { naked_asm!("mov w0, {}", "ret", const T::COUNT) }
 }
 
 #[linkage = "external"]
@@ -59,7 +61,7 @@ extern "C" fn vanilla_external_linkage() -> u32 {
 #[naked]
 #[linkage = "external"]
 extern "C" fn naked_external_linkage() -> u32 {
-    unsafe { naked_asm!("mov rax, 42", "ret") }
+    unsafe { naked_asm!("mov w0, #42", "ret") }
 }
 
 #[cfg(not(windows))]
@@ -72,7 +74,7 @@ extern "C" fn vanilla_weak_linkage() -> u32 {
 #[cfg(not(windows))]
 #[linkage = "weak"]
 extern "C" fn naked_weak_linkage() -> u32 {
-    unsafe { naked_asm!("mov rax, 42", "ret") }
+    unsafe { naked_asm!("mov w0, #42", "ret") }
 }
 
 // functions that are declared in an `extern "C"` block are currently not exported
