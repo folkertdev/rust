@@ -187,7 +187,7 @@ pub unsafe fn simd_fmax<T>(_x: T, _y: T) -> T;
 
 /// Tests elementwise equality of two vectors.
 ///
-/// `T` must be a vector of floating-point primitive types.
+/// `T` must be a vector of integer or floating-point primitive types.
 ///
 /// `U` must be a vector of integers with the same number of elements and element size as `T`.
 ///
@@ -198,7 +198,7 @@ pub unsafe fn simd_eq<T, U>(_x: T, _y: T) -> U;
 
 /// Tests elementwise inequality equality of two vectors.
 ///
-/// `T` must be a vector of floating-point primitive types.
+/// `T` must be a vector of integer or floating-point primitive types.
 ///
 /// `U` must be a vector of integers with the same number of elements and element size as `T`.
 ///
@@ -209,7 +209,7 @@ pub unsafe fn simd_ne<T, U>(_x: T, _y: T) -> U;
 
 /// Tests if `x` is less than `y`, elementwise.
 ///
-/// `T` must be a vector of floating-point primitive types.
+/// `T` must be a vector of integer or floating-point primitive types.
 ///
 /// `U` must be a vector of integers with the same number of elements and element size as `T`.
 ///
@@ -220,7 +220,7 @@ pub unsafe fn simd_lt<T, U>(_x: T, _y: T) -> U;
 
 /// Tests if `x` is less than or equal to `y`, elementwise.
 ///
-/// `T` must be a vector of floating-point primitive types.
+/// `T` must be a vector of integer or floating-point primitive types.
 ///
 /// `U` must be a vector of integers with the same number of elements and element size as `T`.
 ///
@@ -231,7 +231,7 @@ pub unsafe fn simd_le<T, U>(_x: T, _y: T) -> U;
 
 /// Tests if `x` is greater than `y`, elementwise.
 ///
-/// `T` must be a vector of floating-point primitive types.
+/// `T` must be a vector of integer or floating-point primitive types.
 ///
 /// `U` must be a vector of integers with the same number of elements and element size as `T`.
 ///
@@ -242,7 +242,7 @@ pub unsafe fn simd_gt<T, U>(_x: T, _y: T) -> U;
 
 /// Tests if `x` is greater than or equal to `y`, elementwise.
 ///
-/// `T` must be a vector of floating-point primitive types.
+/// `T` must be a vector of integer or floating-point primitive types.
 ///
 /// `U` must be a vector of integers with the same number of elements and element size as `T`.
 ///
