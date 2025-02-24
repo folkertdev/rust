@@ -1478,7 +1478,7 @@ fn generic_simd_intrinsic<'ll, 'tcx>(
             m_len == v_len,
             InvalidMonomorphization::MismatchedLengths { span, name, m_len, v_len }
         );
-        let in_elem_bitwidth = require_int_ty!(
+        let in_elem_bitwidth = require_int_or_uint_ty!(
             m_elem_ty.kind(),
             InvalidMonomorphization::MaskType { span, name, ty: m_elem_ty }
         );

@@ -1,7 +1,6 @@
 //@ compile-flags: -C no-prepopulate-passes
 
 #![crate_type = "lib"]
-
 #![feature(repr_simd, intrinsics)]
 #![allow(non_camel_case_types)]
 
@@ -21,23 +20,36 @@ pub struct b8x4(pub [i8; 4]);
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub struct i32x4([i32; 4]);
 
+#[repr(simd)]
+#[derive(Copy, Clone, PartialEq, Debug)]
+pub struct u32x4([u32; 4]);
+
 extern "rust-intrinsic" {
     fn simd_select<T, U>(x: T, a: U, b: U) -> U;
     fn simd_select_bitmask<T, U>(x: T, a: U, b: U) -> U;
 }
 
-// CHECK-LABEL: @select_m8
+// CHECK-LABEL: @select_mask_i8
 #[no_mangle]
-pub unsafe fn select_m8(m: b8x4, a: f32x4, b: f32x4) -> f32x4 {
+pub unsafe fn select_mask_i8(m: b8x4, a: f32x4, b: f32x4) -> f32x4 {
     // CHECK: [[A:%[0-9]+]] = lshr <4 x i8> %{{.*}}, {{<i8 7, i8 7, i8 7, i8 7>|splat \(i8 7\)}}
     // CHECK: [[B:%[0-9]+]] = trunc <4 x i8> [[A]] to <4 x i1>
     // CHECK: select <4 x i1> [[B]]
     simd_select(m, a, b)
 }
 
-// CHECK-LABEL: @select_m32
+// CHECK-LABEL: @select_mask_i32
 #[no_mangle]
-pub unsafe fn select_m32(m: i32x4, a: f32x4, b: f32x4) -> f32x4 {
+pub unsafe fn select_mask_i32(m: i32x4, a: f32x4, b: f32x4) -> f32x4 {
+    // CHECK: [[A:%[0-9]+]] = lshr <4 x i32> %{{.*}}, {{<i32 31, i32 31, i32 31, i32 31>|splat \(i32 31\)}}
+    // CHECK: [[B:%[0-9]+]] = trunc <4 x i32> [[A]] to <4 x i1>
+    // CHECK: select <4 x i1> [[B]]
+    simd_select(m, a, b)
+}
+
+// CHECK-LABEL: @select_mask_u32
+#[no_mangle]
+pub unsafe fn select_mask_u32(m: i32x4, a: f32x4, b: f32x4) -> f32x4 {
     // CHECK: [[A:%[0-9]+]] = lshr <4 x i32> %{{.*}}, {{<i32 31, i32 31, i32 31, i32 31>|splat \(i32 31\)}}
     // CHECK: [[B:%[0-9]+]] = trunc <4 x i32> [[A]] to <4 x i1>
     // CHECK: select <4 x i1> [[B]]

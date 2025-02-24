@@ -444,7 +444,7 @@ pub fn generic_simd_intrinsic<'a, 'gcc, 'tcx>(
             InvalidMonomorphization::MismatchedLengths { span, name, m_len, v_len }
         );
         match *m_elem_ty.kind() {
-            ty::Int(_) => {}
+            ty::Int(_) | ty::Uint => {}
             _ => return_error!(InvalidMonomorphization::MaskType { span, name, ty: m_elem_ty }),
         }
         return Ok(bx.vector_select(args[0].immediate(), args[1].immediate(), args[2].immediate()));

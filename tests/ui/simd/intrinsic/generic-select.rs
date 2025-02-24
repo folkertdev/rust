@@ -22,13 +22,11 @@ struct b8x4(pub [i8; 4]);
 #[derive(Copy, Clone, PartialEq)]
 struct b8x8(pub [i8; 8]);
 
-
 #[rustc_intrinsic]
 unsafe fn simd_select<T, U>(x: T, a: U, b: U) -> U;
 
 #[rustc_intrinsic]
 unsafe fn simd_select_bitmask<T, U>(x: T, a: U, b: U) -> U;
-
 
 fn main() {
     let m4 = b8x4([0, 0, 0, 0]);
@@ -38,12 +36,10 @@ fn main() {
 
     unsafe {
         simd_select(m4, x, x);
+        simd_select(x, x, x);
 
         simd_select(m8, x, x);
         //~^ ERROR mismatched lengths: mask length `8` != other vector length `4`
-
-        simd_select(x, x, x);
-        //~^ ERROR mask element type is `u32`, expected `i_`
 
         simd_select(z, z, z);
         //~^ ERROR mask element type is `f32`, expected `i_`
