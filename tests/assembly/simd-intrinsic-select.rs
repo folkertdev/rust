@@ -7,6 +7,7 @@
 //@ [x86-avx512] needs-llvm-components: x86
 //@ [aarch64] compile-flags: --target=aarch64-unknown-linux-gnu
 //@ [aarch64] needs-llvm-components: aarch64
+//@ add-core-stubs
 //@ assembly-output: emit-asm
 //@ compile-flags: --crate-type=lib -Copt-level=3 -C panic=abort
 
@@ -14,12 +15,8 @@
 #![no_core]
 #![allow(non_camel_case_types)]
 
-// Because we don't have core yet.
-#[lang = "sized"]
-pub trait Sized {}
-
-#[lang = "copy"]
-trait Copy {}
+extern crate minicore;
+use minicore::*;
 
 #[repr(simd)]
 pub struct i8x16([i8; 16]);
@@ -53,6 +50,7 @@ pub struct m64x8([i64; 8]);
 
 extern "rust-intrinsic" {
     fn simd_select<M, V>(mask: M, a: V, b: V) -> V;
+    fn simd_gt<T, U>(x: T, y: T) -> U;
 }
 
 // CHECK-LABEL: select_i8x16
@@ -126,4 +124,52 @@ pub unsafe extern "C" fn select_f64x8(mask: m64x8, a: f64x8, b: f64x8) -> f64x8 
     // x86-avx512: vpmovq2m k1, zmm0
     // x86-avx512-NEXT: vblendmpd zmm0 {k1}, zmm2, zmm1
     simd_select(mask, a, b)
+}
+
+// test that both signed and unsigned masks work
+
+#[repr(simd)]
+pub struct i32x4([i32; 4]);
+
+#[repr(simd)]
+pub struct u32x4([u32; 4]);
+
+impl Copy for i32x4 {}
+impl Copy for u32x4 {}
+
+#[inline(always)]
+unsafe fn simd_max<T: Copy>(a: T, b: T) -> T {
+    simd_select(simd_gt::<T, T>(a, b), a, b)
+}
+
+// CHECK-LABEL: simd_max_i32
+#[no_mangle]
+pub unsafe fn simd_max_i32(a: i32x4, b: i32x4) -> i32x4 {
+    // x86-avx2: vpmaxsd xmm0, xmm0, xmm1
+    // x86-avx2: ret
+    //
+    // x86-avx512: vpmaxsd xmm0, xmm0, xmm1
+    // x86-avx512: ret
+    //
+    // aarch64: ldr
+    // aarch64: ldr
+    // aarch64: umax
+    // aarch64: ret
+    simd_max(a, b)
+}
+
+// CHECK-LABEL: simd_max_u32
+#[no_mangle]
+pub unsafe fn simd_max_u32(a: u32x4, b: u32x4) -> u32x4 {
+    // x86-avx2: vpmaxud xmm0, xmm0, xmm1
+    // x86-avx2: ret
+    //
+    // x86-avx512: vpmaxud xmm0, xmm0, xmm1
+    // x86-avx512: ret
+    //
+    // aarch64: ldr
+    // aarch64: ldr
+    // aarch64: umax
+    // aarch64: ret
+    simd_max(a, b)
 }

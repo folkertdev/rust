@@ -24,7 +24,11 @@ struct f32x4(pub [f32; 4]);
 
 #[repr(simd)]
 #[derive(Copy, Clone, PartialEq, Debug)]
-struct b8x4(pub [i8; 4]);
+struct i8x4(pub [i8; 4]);
+
+#[repr(simd)]
+#[derive(Copy, Clone, PartialEq, Debug)]
+struct u8x4(pub [i8; 4]);
 
 #[rustc_intrinsic]
 unsafe fn simd_select<T, U>(x: T, a: U, b: U) -> U;
@@ -33,11 +37,11 @@ unsafe fn simd_select<T, U>(x: T, a: U, b: U) -> U;
 unsafe fn simd_select_bitmask<T, U>(x: T, a: U, b: U) -> U;
 
 fn main() {
-    let m0 = b8x4([!0, !0, !0, !0]);
-    let m1 = b8x4([0, 0, 0, 0]);
-    let m2 = b8x4([!0, !0, 0, 0]);
-    let m3 = b8x4([0, 0, !0, !0]);
-    let m4 = b8x4([!0, 0, !0, 0]);
+    let m0 = i8x4([!0, !0, !0, !0]);
+    let m1 = i8x4([0, 0, 0, 0]);
+    let m2 = u8x4([!0, !0, 0, 0]);
+    let m3 = u8x4([0, 0, !0, !0]);
+    let m4 = u8x4([!0, 0, !0, 0]);
 
     unsafe {
         let a = i32x4([1, -2, 3, 4]);
@@ -117,27 +121,27 @@ fn main() {
     unsafe {
         let t = !0 as i8;
         let f = 0 as i8;
-        let a = b8x4([t, f, t, f]);
-        let b = b8x4([f, f, f, t]);
+        let a = i8x4([t, f, t, f]);
+        let b = i8x4([f, f, f, t]);
 
-        let r: b8x4 = simd_select(m0, a, b);
+        let r: i8x4 = simd_select(m0, a, b);
         let e = a;
         assert_eq!(r, e);
 
-        let r: b8x4 = simd_select(m1, a, b);
+        let r: i8x4 = simd_select(m1, a, b);
         let e = b;
         assert_eq!(r, e);
 
-        let r: b8x4 = simd_select(m2, a, b);
-        let e = b8x4([t, f, f, t]);
+        let r: i8x4 = simd_select(m2, a, b);
+        let e = i8x4([t, f, f, t]);
         assert_eq!(r, e);
 
-        let r: b8x4 = simd_select(m3, a, b);
-        let e = b8x4([f, f, t, f]);
+        let r: i8x4 = simd_select(m3, a, b);
+        let e = i8x4([f, f, t, f]);
         assert_eq!(r, e);
 
-        let r: b8x4 = simd_select(m4, a, b);
-        let e = b8x4([t, f, t, t]);
+        let r: i8x4 = simd_select(m4, a, b);
+        let e = i8x4([t, f, t, t]);
         assert_eq!(r, e);
     }
 

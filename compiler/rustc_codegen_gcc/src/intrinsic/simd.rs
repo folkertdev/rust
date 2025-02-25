@@ -444,7 +444,7 @@ pub fn generic_simd_intrinsic<'a, 'gcc, 'tcx>(
             InvalidMonomorphization::MismatchedLengths { span, name, m_len, v_len }
         );
         match *m_elem_ty.kind() {
-            ty::Int(_) => {}
+            ty::Int(_) | ty::Uint(_) => {}
             _ => return_error!(InvalidMonomorphization::MaskType { span, name, ty: m_elem_ty }),
         }
         return Ok(bx.vector_select(args[0].immediate(), args[1].immediate(), args[2].immediate()));
@@ -999,10 +999,10 @@ pub fn generic_simd_intrinsic<'a, 'gcc, 'tcx>(
         assert_eq!(pointer_count - 1, ptr_count(element_ty0));
         assert_eq!(underlying_ty, non_ptr(element_ty0));
 
-        // The element type of the third argument must be a signed integer type of any width:
+        // The element type of the third argument must be a integer type of any width:
         let (_, element_ty2) = arg_tys[2].simd_size_and_type(bx.tcx());
         match *element_ty2.kind() {
-            ty::Int(_) => (),
+            ty::Int(_) | ty::Uint(_) => (),
             _ => {
                 require!(
                     false,
@@ -1116,9 +1116,9 @@ pub fn generic_simd_intrinsic<'a, 'gcc, 'tcx>(
         assert_eq!(pointer_count - 1, ptr_count(element_ty0));
         assert_eq!(underlying_ty, non_ptr(element_ty0));
 
-        // The element type of the third argument must be a signed integer type of any width:
+        // The element type of the third argument must be an integer type of any width:
         match *element_ty2.kind() {
-            ty::Int(_) => (),
+            ty::Int(_) | ty::Uint(_) => (),
             _ => {
                 require!(
                     false,

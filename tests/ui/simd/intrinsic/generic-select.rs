@@ -40,9 +40,6 @@ fn main() {
         simd_select(m8, x, x);
         //~^ ERROR mismatched lengths: mask length `8` != other vector length `4`
 
-        simd_select(x, x, x);
-        //~^ ERROR mask element type is `u32`, expected `i_`
-
         simd_select(z, z, z);
         //~^ ERROR mask element type is `f32`, expected `i_`
 
