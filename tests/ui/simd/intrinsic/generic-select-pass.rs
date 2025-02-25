@@ -1,14 +1,11 @@
 //@ run-pass
 #![allow(non_camel_case_types)]
-
 //@ ignore-emscripten
 //@ ignore-endian-big behavior of simd_select_bitmask is endian-specific
 
 // Test that the simd_select intrinsics produces correct results.
-
 #![feature(repr_simd, intrinsics)]
 #[allow(non_camel_case_types)]
-
 #[repr(simd)]
 #[derive(Copy, Clone, PartialEq, Debug)]
 struct i32x4(pub [i32; 4]);
@@ -34,7 +31,6 @@ unsafe fn simd_select<T, U>(x: T, a: U, b: U) -> U;
 
 #[rustc_intrinsic]
 unsafe fn simd_select_bitmask<T, U>(x: T, a: U, b: U) -> U;
-
 
 fn main() {
     let m0 = b8x4([!0, !0, !0, !0]);
