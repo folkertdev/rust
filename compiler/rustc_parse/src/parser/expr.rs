@@ -2062,6 +2062,78 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub fn parse_asm_template(
+        &mut self,
+        asm_macro: ast::AsmMacro,
+        is_first: bool,
+    ) -> PResult<'a, P<Expr>> {
+        let expected_msg = match asm_macro {
+            _ if is_first => "expected template string",
+            ast::AsmMacro::Asm => {
+                "expected operand, clobber_abi, options, or additional template string"
+            }
+            ast::AsmMacro::GlobalAsm | ast::AsmMacro::NakedAsm => {
+                "expected operand, options, or additional template string"
+            }
+        };
+
+        match self.parse_opt_meta_item_lit() {
+            Some(lit) => match lit.kind {
+                ast::LitKind::Str(_symbol_unescaped, style) => {
+                    let token_lit_kind = match style {
+                        rustc_ast::StrStyle::Cooked => token::LitKind::Str,
+                        rustc_ast::StrStyle::Raw(c) => token::LitKind::StrRaw(c),
+                    };
+                    let token_lit = token::Lit::new(token_lit_kind, lit.symbol, lit.suffix);
+                    Ok(self.mk_expr(lit.span, ExprKind::Lit(token_lit)))
+                }
+                ast::LitKind::ByteStr(..) => {
+                    let err_msg = "asm template must be a string literal";
+                    let mut err = self.dcx().struct_span_err(lit.span, err_msg);
+                    let span = lit.span.shrink_to_lo();
+                    err.span_suggestion_verbose(
+                        span.with_hi(span.lo() + BytePos(1)),
+                        "consider removing the leading `b`",
+                        "",
+                        Applicability::MaybeIncorrect,
+                    );
+                    Err(err)
+                }
+                _ => {
+                    let err_msg = "asm template must be a string literal";
+                    let mut err = self.dcx().struct_span_err(lit.span, err_msg);
+                    err.span_label(lit.span, expected_msg);
+
+                    Err(err)
+                }
+            },
+            _ if self.check_path() => {
+                // see if this is a macro call, like `concat!`
+                let path = self.parse_path(PathStyle::Expr)?;
+
+                // `!`, as an operator, is prefix, so we know this isn't that.
+                if self.eat(exp!(Bang)) {
+                    let lo = path.span;
+                    let mac = P(MacCall { path, args: self.parse_delim_args()? });
+
+                    Ok(self.mk_expr(lo.to(self.prev_token.span), ExprKind::MacCall(mac)))
+                } else {
+                    let mut err = self.dcx().struct_span_err(path.span, expected_msg);
+                    err.span_label(path.span, expected_msg);
+
+                    Err(err)
+                }
+            }
+            _ => {
+                let err_msg = "asm template must be a string literal";
+                let mut err = self.dcx().struct_span_err(self.token.span, err_msg);
+                err.span_label(self.token.span, expected_msg);
+
+                Err(err)
+            }
+        }
+    }
+
     pub(crate) fn mk_token_lit_char(name: Symbol, span: Span) -> (token::Lit, Span) {
         (token::Lit { symbol: name, suffix: None, kind: token::Char }, span)
     }

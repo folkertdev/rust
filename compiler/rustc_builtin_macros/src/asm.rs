@@ -82,7 +82,7 @@ pub fn parse_asm_args<'a>(
         return Err(dcx.create_err(errors::AsmRequiresTemplate { span: sp }));
     }
 
-    let first_template = p.parse_expr()?;
+    let first_template = p.parse_asm_template(asm_macro, true)?;
     let mut args = AsmArgs {
         templates: vec![first_template],
         operands: vec![],
@@ -199,7 +199,7 @@ pub fn parse_asm_args<'a>(
             };
             ast::InlineAsmOperand::Sym { sym }
         } else if allow_templates {
-            let template = p.parse_expr()?;
+            let template = p.parse_asm_template(asm_macro, false)?;
             // If it can't possibly expand to a string, provide diagnostics here to include other
             // things it could have been.
             match template.kind {

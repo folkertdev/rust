@@ -9,7 +9,7 @@ fn main() {
         asm!();
         //~^ ERROR requires at least a template string argument
         asm!(foo);
-        //~^ ERROR asm template must be a string literal
+        //~^ ERROR expected template string
         asm!("{}" foo);
         //~^ ERROR expected token: `,`
         asm!("{}", foo);
@@ -99,7 +99,7 @@ const BAR: i32 = 2;
 global_asm!();
 //~^ ERROR requires at least a template string argument
 global_asm!(FOO);
-//~^ ERROR asm template must be a string literal
+//~^ ERROR expected template string
 global_asm!("{}" FOO);
 //~^ ERROR expected token: `,`
 global_asm!("{}", FOO);
@@ -157,3 +157,6 @@ global_asm!("{}", inlateout(reg));
 //~^ ERROR the `inlateout` operand cannot be used with `global_asm!`
 global_asm!("{}", label(reg));
 //~^ ERROR the `label` operand cannot be used with `global_asm!`
+
+global_asm!(b"");
+//~^ ERROR asm template must be a string literal

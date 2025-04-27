@@ -64,11 +64,11 @@ error: this is a user specified error
 LL |     compile_error!("this is a user specified error");
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-error: asm template must be a string literal
+error: expected template string
   --> $DIR/naked-functions.rs:163:16
    |
 LL |     naked_asm!(invalid_syntax)
-   |                ^^^^^^^^^^^^^^
+   |                ^^^^^^^^^^^^^^ expected template string
 
 error[E0787]: the `asm!` macro is not allowed in naked functions
   --> $DIR/naked-functions.rs:12:14
