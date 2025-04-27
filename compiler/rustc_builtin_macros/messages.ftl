@@ -12,11 +12,6 @@ builtin_macros_asm_duplicate_arg = duplicate argument named `{$name}`
 builtin_macros_asm_expected_comma = expected token: `,`
     .label = expected `,`
 
-builtin_macros_asm_expected_other = expected operand, {$is_inline_asm ->
-    [false] options
-    *[true] clobber_abi, options
-    }, or additional template string
-
 builtin_macros_asm_expected_string_literal = expected string literal
     .label = not a string literal
 

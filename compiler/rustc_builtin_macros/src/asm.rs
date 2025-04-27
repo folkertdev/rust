@@ -199,25 +199,7 @@ pub fn parse_asm_args<'a>(
             };
             ast::InlineAsmOperand::Sym { sym }
         } else if allow_templates {
-            let template = p.parse_asm_template(asm_macro, false)?;
-            // If it can't possibly expand to a string, provide diagnostics here to include other
-            // things it could have been.
-            match template.kind {
-                ast::ExprKind::Lit(token_lit)
-                    if matches!(
-                        token_lit.kind,
-                        token::LitKind::Str | token::LitKind::StrRaw(_)
-                    ) => {}
-                ast::ExprKind::MacCall(..) => {}
-                _ => {
-                    let err = dcx.create_err(errors::AsmExpectedOther {
-                        span: template.span,
-                        is_inline_asm: matches!(asm_macro, AsmMacro::Asm),
-                    });
-                    return Err(err);
-                }
-            }
-            args.templates.push(template);
+            args.templates.push(p.parse_asm_template(asm_macro, false)?);
             continue;
         } else {
             p.unexpected_any()?
