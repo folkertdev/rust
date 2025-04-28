@@ -3421,3 +3421,29 @@ pub(crate) struct MoveSelfModifier {
     pub insertion_span: Span,
     pub modifier: String,
 }
+
+#[derive(Diagnostic)]
+#[diag(parse_asm_template_must_be_string)]
+pub(crate) struct ExpectedAsmArgument {
+    #[primary_span]
+    pub span: Span,
+    #[subdiagnostic]
+    pub sub: ExpectedAsmArgumentSub,
+}
+
+#[derive(Subdiagnostic)]
+pub(crate) enum ExpectedAsmArgumentSub {
+    #[suggestion(
+        parse_asm_cooked_string,
+        style = "verbose",
+        code = "",
+        applicability = "maybe-incorrect"
+    )]
+    ByteStr(#[primary_span] Span),
+    #[label(parse_asm_expected_template)]
+    First(#[primary_span] Span),
+    #[label(parse_asm_expected_asm)]
+    Asm(#[primary_span] Span),
+    #[label(parse_asm_expected_global_or_naked)]
+    GlobalOrNaked(#[primary_span] Span),
+}

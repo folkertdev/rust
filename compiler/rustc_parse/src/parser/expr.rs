@@ -39,7 +39,7 @@ use super::{
     AttrWrapper, BlockMode, ClosureSpans, ExpTokenPair, ForceCollect, Parser, PathStyle,
     Restrictions, SemiColonMode, SeqSep, TokenType, Trailing, UsePreAttrPos,
 };
-use crate::{errors, exp, maybe_recover_from_interpolated_ty_qpath};
+use crate::{errors, exp, fluent_generated as fluent, maybe_recover_from_interpolated_ty_qpath};
 
 #[derive(Debug)]
 pub(super) enum DestructuredFloat {
@@ -2067,14 +2067,16 @@ impl<'a> Parser<'a> {
         asm_macro: ast::AsmMacro,
         is_first: bool,
     ) -> PResult<'a, P<Expr>> {
-        let expected_msg = match asm_macro {
-            _ if is_first => "expected template string",
-            ast::AsmMacro::Asm => {
-                "expected operand, clobber_abi, options, or additional template string"
-            }
-            ast::AsmMacro::GlobalAsm | ast::AsmMacro::NakedAsm => {
-                "expected operand, options, or additional template string"
-            }
+        let diag = |span| {
+            let sub = match asm_macro {
+                _ if is_first => errors::ExpectedAsmArgumentSub::First(span),
+                ast::AsmMacro::Asm => errors::ExpectedAsmArgumentSub::Asm(span),
+                ast::AsmMacro::GlobalAsm | ast::AsmMacro::NakedAsm => {
+                    errors::ExpectedAsmArgumentSub::GlobalOrNaked(span)
+                }
+            };
+
+            errors::ExpectedAsmArgument { span, sub }
         };
 
         match self.parse_opt_meta_item_lit() {
@@ -2088,24 +2090,15 @@ impl<'a> Parser<'a> {
                     Ok(self.mk_expr(lit.span, ExprKind::Lit(token_lit)))
                 }
                 ast::LitKind::ByteStr(..) => {
-                    let err_msg = "asm template must be a string literal";
-                    let mut err = self.dcx().struct_span_err(lit.span, err_msg);
                     let span = lit.span.shrink_to_lo();
-                    err.span_suggestion_verbose(
-                        span.with_hi(span.lo() + BytePos(1)),
-                        "consider removing the leading `b`",
-                        "",
-                        Applicability::MaybeIncorrect,
-                    );
-                    Err(err)
+                    let span = span.with_hi(span.lo() + BytePos(1));
+                    let err = errors::ExpectedAsmArgument {
+                        span: lit.span,
+                        sub: errors::ExpectedAsmArgumentSub::ByteStr(span),
+                    };
+                    Err(self.dcx().create_err(err))
                 }
-                _ => {
-                    let err_msg = "asm template must be a string literal";
-                    let mut err = self.dcx().struct_span_err(lit.span, err_msg);
-                    err.span_label(lit.span, expected_msg);
-
-                    Err(err)
-                }
+                _ => Err(self.dcx().create_err(diag(lit.span))),
             },
             _ if self.check_path() => {
                 // see if this is a macro call, like `concat!`
@@ -2117,20 +2110,23 @@ impl<'a> Parser<'a> {
                     let mac = P(MacCall { path, args: self.parse_delim_args()? });
 
                     Ok(self.mk_expr(lo.to(self.prev_token.span), ExprKind::MacCall(mac)))
+                } else if is_first {
+                    Err(self.dcx().create_err(diag(self.token.span)))
                 } else {
-                    let mut err = self.dcx().struct_span_err(path.span, expected_msg);
+                    let expected_msg = match asm_macro {
+                        ast::AsmMacro::Asm => fluent::parse_asm_expected_asm,
+                        ast::AsmMacro::GlobalAsm | ast::AsmMacro::NakedAsm => {
+                            fluent::parse_asm_expected_global_or_naked
+                        }
+                    };
+
+                    let mut err = self.dcx().struct_span_err(path.span, expected_msg.clone());
                     err.span_label(path.span, expected_msg);
 
                     Err(err)
                 }
             }
-            _ => {
-                let err_msg = "asm template must be a string literal";
-                let mut err = self.dcx().struct_span_err(self.token.span, err_msg);
-                err.span_label(self.token.span, expected_msg);
-
-                Err(err)
-            }
+            _ => Err(self.dcx().create_err(diag(self.token.span))),
         }
     }
 

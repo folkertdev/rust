@@ -161,7 +161,7 @@ pub extern "C" fn allow_compile_error_and_asm(a: u32) -> u32 {
 #[unsafe(naked)]
 pub extern "C" fn invalid_asm_syntax(a: u32) -> u32 {
     naked_asm!(invalid_syntax)
-    //~^ ERROR expected template string
+    //~^ ERROR asm template must be a string literal
 }
 
 #[cfg(target_arch = "x86_64")]

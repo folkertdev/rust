@@ -4,7 +4,7 @@ error: requires at least a template string argument
 LL |         asm!();
    |         ^^^^^^
 
-error: expected template string
+error: asm template must be a string literal
   --> $DIR/parse-error.rs:11:14
    |
 LL |         asm!(foo);
@@ -228,7 +228,7 @@ error: requires at least a template string argument
 LL | global_asm!();
    | ^^^^^^^^^^^^^
 
-error: expected template string
+error: asm template must be a string literal
   --> $DIR/parse-error.rs:101:13
    |
 LL | global_asm!(FOO);

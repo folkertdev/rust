@@ -64,7 +64,7 @@ error: this is a user specified error
 LL |     compile_error!("this is a user specified error");
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-error: expected template string
+error: asm template must be a string literal
   --> $DIR/naked-functions.rs:163:16
    |
 LL |     naked_asm!(invalid_syntax)

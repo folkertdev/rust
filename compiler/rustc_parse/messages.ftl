@@ -8,6 +8,18 @@ parse_array_brackets_instead_of_braces = this is a block expression, not an arra
 
 parse_array_index_offset_of = array indexing not supported in offset_of
 
+parse_asm_cooked_string = consider removing the leading `b`
+
+parse_asm_expected_asm =
+    expected operand, clobber_abi, options, or additional template string
+
+parse_asm_expected_global_or_naked =
+    expected operand, options, or additional template string
+
+parse_asm_expected_template = expected template string
+
+parse_asm_template_must_be_string = asm template must be a string literal
+
 parse_assignment_else_not_allowed = <assignment> ... else {"{"} ... {"}"} is not allowed
 
 parse_associated_static_item_not_allowed = associated `static` items are not allowed

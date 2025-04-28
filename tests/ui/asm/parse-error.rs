@@ -9,7 +9,7 @@ fn main() {
         asm!();
         //~^ ERROR requires at least a template string argument
         asm!(foo);
-        //~^ ERROR expected template string
+        //~^ ERROR asm template must be a string literal
         asm!("{}" foo);
         //~^ ERROR expected token: `,`
         asm!("{}", foo);
@@ -99,7 +99,7 @@ const BAR: i32 = 2;
 global_asm!();
 //~^ ERROR requires at least a template string argument
 global_asm!(FOO);
-//~^ ERROR expected template string
+//~^ ERROR asm template must be a string literal
 global_asm!("{}" FOO);
 //~^ ERROR expected token: `,`
 global_asm!("{}", FOO);
