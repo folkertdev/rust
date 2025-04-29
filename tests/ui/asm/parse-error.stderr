@@ -428,6 +428,12 @@ LL - global_asm!(b"");
 LL + global_asm!("");
    |
 
+error: asm template must be a string literal
+  --> $DIR/parse-error.rs:163:13
+   |
+LL | global_asm!(a = const { 5 }, "foo" + 5);
+   |             ^ expected template string
+
 error[E0435]: attempt to use a non-constant value in a constant
   --> $DIR/parse-error.rs:37:37
    |
@@ -488,6 +494,6 @@ LL -     let mut bar = 0;
 LL +     const bar: /* Type */ = 0;
    |
 
-error: aborting due to 73 previous errors
+error: aborting due to 74 previous errors
 
 For more information about this error, try `rustc --explain E0435`.

@@ -160,3 +160,5 @@ global_asm!("{}", label(reg));
 
 global_asm!(b"");
 //~^ ERROR asm template must be a string literal
+global_asm!(a = const { 5 }, "foo" + 5);
+//~^ asm template must be a string literal

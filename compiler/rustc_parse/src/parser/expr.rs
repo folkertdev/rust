@@ -2062,6 +2062,8 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Parse a template used by the `asm!` macros. A template can be either a string literal,
+    /// or a macro call (that must later expand to a string literal).
     pub fn parse_asm_template(
         &mut self,
         asm_macro: ast::AsmMacro,
@@ -2079,8 +2081,8 @@ impl<'a> Parser<'a> {
             errors::ExpectedAsmArgument { span, sub }
         };
 
-        match self.parse_opt_meta_item_lit() {
-            Some(lit) => match lit.kind {
+        if let Some(lit) = self.parse_opt_meta_item_lit() {
+            match lit.kind {
                 ast::LitKind::Str(_symbol_unescaped, style) => {
                     let token_lit_kind = match style {
                         rustc_ast::StrStyle::Cooked => token::LitKind::Str,
@@ -2099,34 +2101,34 @@ impl<'a> Parser<'a> {
                     Err(self.dcx().create_err(err))
                 }
                 _ => Err(self.dcx().create_err(diag(lit.span))),
-            },
-            _ if self.check_path() => {
-                // see if this is a macro call, like `concat!`
-                let path = self.parse_path(PathStyle::Expr)?;
-
-                // `!`, as an operator, is prefix, so we know this isn't that.
-                if self.eat(exp!(Bang)) {
-                    let lo = path.span;
-                    let mac = P(MacCall { path, args: self.parse_delim_args()? });
-
-                    Ok(self.mk_expr(lo.to(self.prev_token.span), ExprKind::MacCall(mac)))
-                } else if is_first {
-                    Err(self.dcx().create_err(diag(self.token.span)))
-                } else {
-                    let expected_msg = match asm_macro {
-                        ast::AsmMacro::Asm => fluent::parse_asm_expected_asm,
-                        ast::AsmMacro::GlobalAsm | ast::AsmMacro::NakedAsm => {
-                            fluent::parse_asm_expected_global_or_naked
-                        }
-                    };
-
-                    let mut err = self.dcx().struct_span_err(path.span, expected_msg.clone());
-                    err.span_label(path.span, expected_msg);
-
-                    Err(err)
-                }
             }
-            _ => Err(self.dcx().create_err(diag(self.token.span))),
+        } else if self.check_path() {
+            // attempt to parse a macro call, like `std::concat!`
+            let path = self.parse_path(PathStyle::Expr)?;
+
+            // `!`, as an operator, is prefix, so we know this isn't that.
+            if self.eat(exp!(Bang)) {
+                let lo = path.span;
+                let mac = P(MacCall { path, args: self.parse_delim_args()? });
+
+                Ok(self.mk_expr(lo.to(self.prev_token.span), ExprKind::MacCall(mac)))
+            } else if is_first {
+                Err(self.dcx().create_err(diag(path.span)))
+            } else {
+                let expected_msg = match asm_macro {
+                    ast::AsmMacro::Asm => fluent::parse_asm_expected_asm,
+                    ast::AsmMacro::GlobalAsm | ast::AsmMacro::NakedAsm => {
+                        fluent::parse_asm_expected_global_or_naked
+                    }
+                };
+
+                let mut err = self.dcx().struct_span_err(path.span, expected_msg.clone());
+                err.span_label(path.span, expected_msg);
+
+                Err(err)
+            }
+        } else {
+            Err(self.dcx().create_err(diag(self.token.span)))
         }
     }
 
