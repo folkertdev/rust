@@ -1,0 +1,15 @@
+cargo-features = ["profile-rustflags"]
+
+[package]
+name = "app"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dep = { path = "../dep" }
+
+[profile.dev]
+rustflags = ["-Z", "min-function-alignment=32"]
+
+[profile.dev.package.dep]
+rustflags = ["-Z", "min-function-alignment=2048"]
