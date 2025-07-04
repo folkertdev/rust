@@ -262,6 +262,7 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
                     | AttributeKind::NoMangle(..)
                     | AttributeKind::Used { .. }
                     | AttributeKind::PassByValue (..)
+                    | AttributeKind::RustcPassIndirectlyInNonRusticAbis(..)
                     | AttributeKind::StdInternalSymbol (..)
                     | AttributeKind::Coverage (..)
                     | AttributeKind::ShouldPanic { .. }
