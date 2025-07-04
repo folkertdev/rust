@@ -283,6 +283,7 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
                     | AttributeKind::ObjcSelector { .. }
                     | AttributeKind::RustcCoherenceIsCore(..)
                     | AttributeKind::DebuggerVisualizer(..)
+                    | AttributeKind::RustcPassIndirectlyInNonRusticAbis(..)
                     | AttributeKind::RustcMain,
                 ) => { /* do nothing  */ }
                 Attribute::Unparsed(attr_item) => {
