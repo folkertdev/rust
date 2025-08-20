@@ -383,7 +383,9 @@ impl<'ll, 'tcx> IntrinsicCallBuilderMethods<'tcx> for Builder<'_, 'll, 'tcx> {
             | sym::rotate_left
             | sym::rotate_right
             | sym::saturating_add
-            | sym::saturating_sub => {
+            | sym::saturating_sub
+            | sym::funnel_shl
+            | sym::funnel_shr => {
                 let ty = args[0].layout.ty;
                 if !ty.is_integral() {
                     tcx.dcx().emit_err(InvalidMonomorphization::BasicIntegerType {
@@ -447,6 +449,19 @@ impl<'ll, 'tcx> IntrinsicCallBuilderMethods<'tcx> for Builder<'_, 'll, 'tcx> {
                             if is_add { "add" } else { "sub" },
                         );
                         self.call_intrinsic(llvm_name, &[llty], &[lhs, rhs])
+                    }
+                    sym::funnel_shl | sym::funnel_shr => {
+                        let is_left = name == sym::funnel_shl;
+                        let lhs = args[0].immediate();
+                        let rhs = args[1].immediate();
+                        let raw_shift = args[2].immediate();
+                        let llvm_name = format!("llvm.fsh{}", if is_left { 'l' } else { 'r' });
+
+                        // llvm expects shift to be the same type as the values, but rust
+                        // always uses `u32`.
+                        let raw_shift = self.intcast(raw_shift, self.val_ty(lhs), false);
+
+                        self.call_intrinsic(llvm_name, &[llty], &[lhs, rhs, raw_shift])
                     }
                     _ => bug!(),
                 }

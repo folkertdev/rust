@@ -1096,6 +1096,8 @@ symbols! {
         fsub_fast,
         full,
         fundamental,
+        funnel_shl,
+        funnel_shr,
         fused_iterator,
         future,
         future_drop_poll,
