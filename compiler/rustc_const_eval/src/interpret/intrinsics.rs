@@ -302,6 +302,37 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 let result = Scalar::from_uint(truncated_bits, layout_val.size);
                 self.write_scalar(result, dest)?;
             }
+            sym::funnel_shl | sym::funnel_shr => {
+                // funnel_shl: (A << (S % BW)) | (B >> ((BW - S) % BW))
+                // funnel_shr: (A << ((BW - S) % BW)) | (B >> (S % BW))
+                let layout_val = self.layout_of(instance_args.type_at(0))?;
+
+                let lhs = self.read_scalar(&args[0])?;
+                let lhs_bits = lhs.to_bits(layout_val.size)?; // sign is ignored here
+
+                let rhs = self.read_scalar(&args[1])?;
+                let rhs_bits = rhs.to_bits(layout_val.size)?; // sign is ignored here
+
+                let layout_raw_shift = self.layout_of(self.tcx.types.u32)?;
+                let raw_shift = self.read_scalar(&args[2])?;
+                let raw_shift_bits = raw_shift.to_bits(layout_raw_shift.size)?;
+
+                let width_bits = u128::from(layout_val.size.bits());
+                let shift_bits = raw_shift_bits % width_bits;
+                let inv_shift_bits = (width_bits - shift_bits) % width_bits;
+                let result_bits = if shift_bits == 0 {
+                    if intrinsic_name == sym::funnel_shl { lhs_bits } else { rhs_bits }
+                } else {
+                    if intrinsic_name == sym::rotate_left {
+                        (lhs_bits << shift_bits) | (rhs_bits >> inv_shift_bits)
+                    } else {
+                        (rhs_bits >> shift_bits) | (lhs_bits << inv_shift_bits)
+                    }
+                };
+                let truncated_bits = layout_val.size.truncate(result_bits);
+                let result = Scalar::from_uint(truncated_bits, layout_val.size);
+                self.write_scalar(result, dest)?;
+            }
             sym::copy => {
                 self.copy_intrinsic(&args[0], &args[1], &args[2], /*nonoverlapping*/ false)?;
             }
