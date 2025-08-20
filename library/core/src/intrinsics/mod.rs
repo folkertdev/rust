@@ -2102,6 +2102,48 @@ pub const fn saturating_add<T: Copy>(a: T, b: T) -> T;
 #[rustc_intrinsic]
 pub const fn saturating_sub<T: Copy>(a: T, b: T) -> T;
 
+/// Funnel Shift left.
+///
+/// Concatenates `a` and `b` (with `a` in the most significant half),
+/// creating an integer twice as wide. Then shift this inetegr left
+/// by `shift` (taken modulo the bit size of `T`), and extract the
+/// most significant half. If `a` and `b` are the same, this is equivalent
+/// to a rotate left operation.
+///
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
+///
+/// Safer versions of this intrinsic are available on the integer primitives
+/// via the `funnel_shl` method. For example, [`u32::funnel_shl`].
+#[rustc_intrinsic]
+#[rustc_nounwind]
+#[rustc_const_unstable(feature = "funnel_shifts", issue = "145686")]
+#[unstable(feature = "funnel_shifts", issue = "145686")]
+pub const fn funnel_shl<T: Copy>(a: T, b: T, shift: u32) -> T;
+
+/// Funnel Shift right.
+///
+/// Concatenates `a` and `b` (with `a` in the most significant half),
+/// creating an integer twice as wide. Then shift this integer right
+/// by `shift` (taken modulo the bit size of `T`), and extract the
+/// least significant half. If `a` and `b` are the same, this is equivalent
+/// to a rotate right operation.
+///
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
+///
+/// Safer versions of this intrinsic are available on the integer primitives
+/// via the `funnel_shr` method. For example, [`u32::funnel_shr`]
+#[rustc_intrinsic]
+#[rustc_nounwind]
+#[rustc_const_unstable(feature = "funnel_shifts", issue = "145686")]
+#[unstable(feature = "funnel_shifts", issue = "145686")]
+pub const fn funnel_shr<T: Copy>(a: T, b: T, shift: u32) -> T;
+
 /// This is an implementation detail of [`crate::ptr::read`] and should
 /// not be used anywhere else.  See its comments for why this exists.
 ///
