@@ -85,6 +85,8 @@ fn intrinsic_operation_unsafety(tcx: TyCtxt<'_>, intrinsic_id: LocalDefId) -> hi
         | sym::saturating_sub
         | sym::rotate_left
         | sym::rotate_right
+        | sym::funnel_shl
+        | sym::funnel_shr
         | sym::ctpop
         | sym::ctlz
         | sym::cttz
