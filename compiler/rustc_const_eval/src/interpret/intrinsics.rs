@@ -313,21 +313,17 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 let rhs = self.read_scalar(&args[1])?;
                 let rhs_bits = rhs.to_bits(layout_val.size)?; // sign is ignored here
 
-                let layout_raw_shift = self.layout_of(self.tcx.types.u32)?;
                 let raw_shift = self.read_scalar(&args[2])?;
-                let raw_shift_bits = raw_shift.to_bits(layout_raw_shift.size)?;
+                let raw_shift_bits = raw_shift.to_u32()?;
 
-                let width_bits = u128::from(layout_val.size.bits());
+                // The funnel shifts modulo by T::BITS to circumvent panics/UB.
+                let width_bits = u32::try_from(layout_val.size.bits()).unwrap();
                 let shift_bits = raw_shift_bits % width_bits;
-                let inv_shift_bits = (width_bits - shift_bits) % width_bits;
-                let result_bits = if shift_bits == 0 {
-                    if intrinsic_name == sym::funnel_shl { lhs_bits } else { rhs_bits }
+                let inv_shift_bits = (width_bits - shift_bits);
+                let result_bits = if intrinsic_name == sym::funnel_shl {
+                    lhs_bits.unbounded_shl(shift_bits) | rhs_bits.unbounded_shr(inv_shift_bits)
                 } else {
-                    if intrinsic_name == sym::rotate_left {
-                        (lhs_bits << shift_bits) | (rhs_bits >> inv_shift_bits)
-                    } else {
-                        (rhs_bits >> shift_bits) | (lhs_bits << inv_shift_bits)
-                    }
+                    rhs_bits.unbounded_shr(shift_bits) | lhs_bits.unbounded_shl(inv_shift_bits)
                 };
                 let truncated_bits = layout_val.size.truncate(result_bits);
                 let result = Scalar::from_uint(truncated_bits, layout_val.size);
