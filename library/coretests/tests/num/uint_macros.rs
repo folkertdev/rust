@@ -104,6 +104,23 @@ macro_rules! uint_module {
                 assert_eq_const_safe!($T: C.rotate_left(128), C);
             }
 
+            fn test_funnel_shift() {
+                // Shifting by 0 should have no effect
+                assert_eq_const_safe!($T: <$T>::funnel_shl(A, B, 0), A);
+                assert_eq_const_safe!($T: <$T>::funnel_shr(A, B, 0), B);
+
+                // Shifting by a multiple of `T::BITS` should also have no effect
+                assert_eq_const_safe!($T: <$T>::funnel_shl(A, B, $T::BITS), A);
+                assert_eq_const_safe!($T: <$T>::funnel_shr(A, B, $T::BITS), B);
+
+                assert_eq_const_safe!($T: <$T>::funnel_shl(_0, _1, 4), 0b1111);
+                assert_eq_const_safe!($T: <$T>::funnel_shr(_0, _1, 4), _1 >> 4);
+
+                // The shift amount is taken modulo `T::BITS`.
+                assert_eq_const_safe!($T: <$T>::funnel_shl(_0, _1, $T::BITS + 4), 0b1111);
+                assert_eq_const_safe!($T: <$T>::funnel_shr(_0, _1, $T::BITS + 4), _1 >> 4);
+            }
+
             fn test_swap_bytes() {
                 assert_eq_const_safe!($T: A.swap_bytes().swap_bytes(), A);
                 assert_eq_const_safe!($T: B.swap_bytes().swap_bytes(), B);
