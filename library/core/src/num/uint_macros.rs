@@ -391,6 +391,7 @@ macro_rules! uint_impl {
         /// Basic usage:
         ///
         /// ```
+        /// #![feature(funnel_shifts)]
         #[doc = concat!("let a = ", $rot_op, stringify!($SelfT), ";")]
         #[doc = concat!("let b = ", $fsh_op, stringify!($SelfT), ";")]
         #[doc = concat!("let m = ", $fshl_result, ";")]
@@ -419,6 +420,7 @@ macro_rules! uint_impl {
         /// Basic usage:
         ///
         /// ```
+        /// #![feature(funnel_shifts)]
         #[doc = concat!("let a = ", $rot_op, stringify!($SelfT), ";")]
         #[doc = concat!("let b = ", $fsh_op, stringify!($SelfT), ";")]
         #[doc = concat!("let m = ", $fshr_result, ";")]
