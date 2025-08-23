@@ -442,6 +442,8 @@ impl<'a, 'gcc, 'tcx> IntrinsicCallBuilderMethods<'tcx> for Builder<'a, 'gcc, 'tc
             | sym::bitreverse
             | sym::rotate_left
             | sym::rotate_right
+            | sym::funnel_shl
+            | sym::funnel_shr
             | sym::saturating_add
             | sym::saturating_sub => {
                 match int_type_width_signed(args[0].layout.ty, self) {
@@ -504,6 +506,53 @@ impl<'a, 'gcc, 'tcx> IntrinsicCallBuilderMethods<'tcx> for Builder<'a, 'gcc, 'tc
                             } else {
                                 self.rotate_right(val, raw_shift, width)
                             }
+                        }
+                        sym::funnel_shl => {
+                            let lhs_bits = args[0].immediate();
+                            let rhs_bits = args[1].immediate();
+                            let raw_shift_bits = args[2].immediate();
+
+                            let width_ty = raw_shift_bits.get_type();
+                            let width_bits = self.cx.gcc_uint(width_ty, width as u64);
+                            let shift_bits = self.gcc_urem(raw_shift_bits, width_bits);
+
+                            // lhs_bits << shift_bits
+                            let shl = self.gcc_shl(lhs_bits, shift_bits);
+
+                            // rhs_bits.bounded_shr(inv_shift_bits)
+                            let inv_shift_bits = self.gcc_sub(width_bits, shift_bits);
+                            let inv_shift_bits_mod = self.gcc_urem(inv_shift_bits, width_bits);
+                            let shr = self.gcc_lshr(rhs_bits, inv_shift_bits_mod);
+                            let zero = self.cx.gcc_uint(lhs_bits.get_type(), 0);
+                            let is_zero =
+                                self.gcc_icmp(IntPredicate::IntEQ, inv_shift_bits_mod, zero);
+                            let shr = self.select(is_zero, zero, shr);
+
+                            self.or(shl, shr)
+                        }
+                        sym::funnel_shr => {
+                            let lhs_bits = args[0].immediate();
+                            let rhs_bits = args[1].immediate();
+                            let raw_shift_bits = args[2].immediate();
+
+                            let width_ty = raw_shift_bits.get_type();
+                            let width_bits = self.cx.gcc_uint(width_ty, width as u64);
+                            let shift_bits = self.gcc_urem(raw_shift_bits, width_bits);
+
+                            // rhs_bits >> shift_bits
+                            let shr = self.gcc_lshr(rhs_bits, shift_bits);
+
+                            let inv_shift_bits = self.gcc_sub(width_bits, shift_bits);
+
+                            // lhs_bits.bounded_shl(inv_shift_bits)
+                            let inv_shift_bits_mod = self.gcc_urem(inv_shift_bits, width_bits);
+                            let shl = self.gcc_shl(lhs_bits, inv_shift_bits_mod);
+                            let zero = self.cx.gcc_uint(lhs_bits.get_type(), 0);
+                            let is_zero =
+                                self.gcc_icmp(IntPredicate::IntEQ, inv_shift_bits_mod, zero);
+                            let shl = self.select(is_zero, zero, shl);
+
+                            self.or(shl, shr)
                         }
                         sym::saturating_add => self.saturating_add(
                             args[0].immediate(),
