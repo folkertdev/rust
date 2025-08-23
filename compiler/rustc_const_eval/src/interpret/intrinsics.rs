@@ -319,11 +319,11 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 // The funnel shifts modulo by T::BITS to circumvent panics/UB.
                 let width_bits = u32::try_from(layout_val.size.bits()).unwrap();
                 let shift_bits = raw_shift_bits % width_bits;
-                let inv_shift_bits = (width_bits - shift_bits);
+                let inv_shift_bits = width_bits - shift_bits;
                 let result_bits = if intrinsic_name == sym::funnel_shl {
-                    lhs_bits.unbounded_shl(shift_bits) | rhs_bits.unbounded_shr(inv_shift_bits)
+                    (lhs_bits << shift_bits) | rhs_bits.unbounded_shr(inv_shift_bits)
                 } else {
-                    rhs_bits.unbounded_shr(shift_bits) | lhs_bits.unbounded_shl(inv_shift_bits)
+                    (rhs_bits >> shift_bits) | lhs_bits.unbounded_shl(inv_shift_bits)
                 };
                 let truncated_bits = layout_val.size.truncate(result_bits);
                 let result = Scalar::from_uint(truncated_bits, layout_val.size);
