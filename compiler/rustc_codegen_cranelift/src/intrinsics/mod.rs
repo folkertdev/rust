@@ -655,6 +655,66 @@ fn codegen_regular_intrinsic_call<'tcx>(
             let res = fx.bcx.ins().rotr(x, y);
             ret.write_cvalue(fx, CValue::by_val(res, layout));
         }
+        sym::funnel_shl => {
+            intrinsic_args!(fx, args => (x, y, z); intrinsic);
+            let layout = x.layout();
+
+            let width_bits = layout.size.bits() as u64;
+            let width_bits = fx.bcx.ins().iconst(types::I32, width_bits as i64);
+
+            let lhs_bits = x.load_scalar(fx);
+            let rhs_bits = y.load_scalar(fx);
+            let raw_shift_bits = z.load_scalar(fx);
+
+            let ty = fx.bcx.func.dfg.value_type(lhs_bits);
+            let zero = fx.bcx.ins().iconst(ty, 0);
+
+            let shift_bits = fx.bcx.ins().urem(raw_shift_bits, width_bits);
+
+            // lhs_bits << shift_bits
+            let shl = fx.bcx.ins().ishl(lhs_bits, shift_bits);
+
+            let inv_shift_bits = fx.bcx.ins().isub(width_bits, shift_bits);
+
+            // rhs_bits.bounded_shr(inv_shift_bits)
+            let inv_shift_bits_mod = fx.bcx.ins().urem(inv_shift_bits, width_bits);
+            let shr = fx.bcx.ins().ushr(rhs_bits, inv_shift_bits_mod);
+            let is_zero = fx.bcx.ins().icmp(IntCC::Equal, inv_shift_bits_mod, zero);
+            let shr = fx.bcx.ins().select(is_zero, zero, shr);
+
+            let res = fx.bcx.ins().bor(shr, shl);
+            ret.write_cvalue(fx, CValue::by_val(res, layout));
+        }
+        sym::funnel_shr => {
+            intrinsic_args!(fx, args => (x, y, z); intrinsic);
+            let layout = x.layout();
+
+            let width_bits = layout.size.bits() as u64;
+            let width_bits = fx.bcx.ins().iconst(types::I32, width_bits as i64);
+
+            let lhs_bits = x.load_scalar(fx);
+            let rhs_bits = y.load_scalar(fx);
+            let raw_shift_bits = z.load_scalar(fx);
+
+            let ty = fx.bcx.func.dfg.value_type(lhs_bits);
+            let zero = fx.bcx.ins().iconst(ty, 0);
+
+            let shift_bits = fx.bcx.ins().urem(raw_shift_bits, width_bits);
+
+            // rhs_bits >> shift_bits
+            let shr = fx.bcx.ins().ushr(rhs_bits, shift_bits);
+
+            let inv_shift_bits = fx.bcx.ins().isub(width_bits, shift_bits);
+
+            // lhs_bits.bounded_shl(inv_shift_bits)
+            let inv_shift_bits_mod = fx.bcx.ins().urem(inv_shift_bits, width_bits);
+            let shl = fx.bcx.ins().ishl(lhs_bits, inv_shift_bits_mod);
+            let is_zero = fx.bcx.ins().icmp(IntCC::Equal, inv_shift_bits_mod, zero);
+            let shl = fx.bcx.ins().select(is_zero, zero, shl);
+
+            let res = fx.bcx.ins().bor(shr, shl);
+            ret.write_cvalue(fx, CValue::by_val(res, layout));
+        }
 
         // The only difference between offset and arith_offset is regarding UB. Because Cranelift
         // doesn't have UB both are codegen'ed the same way
