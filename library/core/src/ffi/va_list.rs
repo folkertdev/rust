@@ -198,8 +198,11 @@ mod sealed {
 
     impl Sealed for f64 {}
 
-    impl<T> Sealed for *mut T {}
     impl<T> Sealed for *const T {}
+    impl<T> Sealed for *mut T {}
+
+    impl<T> Sealed for &'_ T {}
+    impl<T> Sealed for &'_ mut T {}
 }
 
 /// Trait which permits the allowed types to be used with [`VaListImpl::arg`].
@@ -214,6 +217,7 @@ mod sealed {
 ///
 /// [`c_int`]: core::ffi::c_int
 /// [`c_double`]: core::ffi::c_double
+#[lang = "va_arg_safe"]
 pub unsafe trait VaArgSafe: sealed::Sealed {}
 
 // i8 and i16 are implicitly promoted to c_int in C, and cannot implement `VaArgSafe`.
@@ -229,8 +233,11 @@ unsafe impl VaArgSafe for usize {}
 // f32 is implicitly promoted to c_double in C, and cannot implement `VaArgSafe`.
 unsafe impl VaArgSafe for f64 {}
 
-unsafe impl<T> VaArgSafe for *mut T {}
 unsafe impl<T> VaArgSafe for *const T {}
+unsafe impl<T> VaArgSafe for *mut T {}
+
+unsafe impl<T> VaArgSafe for &'_ T {}
+unsafe impl<T> VaArgSafe for &'_ mut T {}
 
 impl<'f> VaListImpl<'f> {
     /// Advance to the next arg.

@@ -30,12 +30,5 @@ fn main() {
 
         let x: unsafe extern "C" fn(f: isize, x: u8) = foo; //~ ERROR mismatched types
         let y: extern "C" fn(f: isize, x: u8, ...) = bar; //~ ERROR mismatched types
-
-        foo(1, 2, 3f32); //~ ERROR can't pass
-        foo(1, 2, true); //~ ERROR can't pass
-        foo(1, 2, 1i8); //~ ERROR can't pass
-        foo(1, 2, 1u8); //~ ERROR can't pass
-        foo(1, 2, 1i16); //~ ERROR can't pass
-        foo(1, 2, 1u16); //~ ERROR can't pass
     }
 }

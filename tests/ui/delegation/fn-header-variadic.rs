@@ -10,8 +10,10 @@ mod to_reuse {
 
 reuse to_reuse::variadic_fn;
 //~^ ERROR delegation to C-variadic functions is not allowed
+//~| ERROR the trait bound `VaListImpl<'_>: VaArgSafe` is not satisfied
 reuse fn_header_aux::variadic_fn_extern;
 //~^ ERROR delegation to C-variadic functions is not allowed
+//~| ERROR the trait bound `VaListImpl<'_>: VaArgSafe` is not satisfied
 
 fn main() {
     unsafe {

@@ -8,7 +8,7 @@ LL | reuse to_reuse::variadic_fn;
    |                 ^^^^^^^^^^^
 
 error: delegation to C-variadic functions is not allowed
-  --> $DIR/fn-header-variadic.rs:13:22
+  --> $DIR/fn-header-variadic.rs:14:22
    |
 LL | reuse fn_header_aux::variadic_fn_extern;
    |                      ^^^^^^^^^^^^^^^^^^
@@ -18,5 +18,18 @@ LL | reuse fn_header_aux::variadic_fn_extern;
 LL | pub unsafe extern "C" fn variadic_fn_extern(n: usize, mut args: ...) {}
    | -------------------------------------------------------------------- callee defined here
 
-error: aborting due to 2 previous errors
+error[E0277]: the trait bound `VaListImpl<'_>: VaArgSafe` is not satisfied
+  --> $DIR/fn-header-variadic.rs:11:17
+   |
+LL | reuse to_reuse::variadic_fn;
+   |                 ^^^^^^^^^^^ the trait `VaArgSafe` is not implemented for `VaListImpl<'_>`
 
+error[E0277]: the trait bound `VaListImpl<'_>: VaArgSafe` is not satisfied
+  --> $DIR/fn-header-variadic.rs:14:22
+   |
+LL | reuse fn_header_aux::variadic_fn_extern;
+   |                      ^^^^^^^^^^^^^^^^^^ the trait `VaArgSafe` is not implemented for `VaListImpl<'_>`
+
+error: aborting due to 4 previous errors
+
+For more information about this error, try `rustc --explain E0277`.

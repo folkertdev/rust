@@ -498,7 +498,27 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                             replace: fn_ptr,
                         });
                     }
-                    _ => {}
+                    ty::Infer(ty::InferTy::IntVar(_) | ty::InferTy::FloatVar(_)) => {
+                        // IntVar will default to i32, which is valid.
+                        // FloatVar will default to f64, which is valid.
+                    }
+                    _ => {
+                        // In general the argument type must implement `core::ffi::VaArgSafe`.
+                        let trait_ref = ty::TraitRef::new(
+                            tcx,
+                            tcx.require_lang_item(LangItem::VaArgSafe, arg.span),
+                            [arg_ty],
+                        );
+
+                        let obligation = traits::Obligation::new(
+                            tcx,
+                            traits::ObligationCause::misc(arg.span, self.body_id),
+                            self.param_env,
+                            trait_ref,
+                        );
+
+                        self.register_predicate(obligation);
+                    }
                 }
             }
         }

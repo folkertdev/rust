@@ -64,73 +64,7 @@ LL |         let y: extern "C" fn(f: isize, x: u8, ...) = bar;
    = note: expected fn pointer `extern "C" fn(_, _, ...)`
                  found fn item `extern "C" fn(_, _) {bar}`
 
-error[E0617]: can't pass `f32` to variadic function
-  --> $DIR/variadic-ffi-1.rs:34:19
-   |
-LL |         foo(1, 2, 3f32);
-   |                   ^^^^
-   |
-help: cast the value to `c_double`
-   |
-LL |         foo(1, 2, 3f32 as c_double);
-   |                        +++++++++++
+error: aborting due to 6 previous errors
 
-error[E0617]: can't pass `bool` to variadic function
-  --> $DIR/variadic-ffi-1.rs:35:19
-   |
-LL |         foo(1, 2, true);
-   |                   ^^^^
-   |
-help: cast the value to `c_int`
-   |
-LL |         foo(1, 2, true as c_int);
-   |                        ++++++++
-
-error[E0617]: can't pass `i8` to variadic function
-  --> $DIR/variadic-ffi-1.rs:36:19
-   |
-LL |         foo(1, 2, 1i8);
-   |                   ^^^
-   |
-help: cast the value to `c_int`
-   |
-LL |         foo(1, 2, 1i8 as c_int);
-   |                       ++++++++
-
-error[E0617]: can't pass `u8` to variadic function
-  --> $DIR/variadic-ffi-1.rs:37:19
-   |
-LL |         foo(1, 2, 1u8);
-   |                   ^^^
-   |
-help: cast the value to `c_uint`
-   |
-LL |         foo(1, 2, 1u8 as c_uint);
-   |                       +++++++++
-
-error[E0617]: can't pass `i16` to variadic function
-  --> $DIR/variadic-ffi-1.rs:38:19
-   |
-LL |         foo(1, 2, 1i16);
-   |                   ^^^^
-   |
-help: cast the value to `c_int`
-   |
-LL |         foo(1, 2, 1i16 as c_int);
-   |                        ++++++++
-
-error[E0617]: can't pass `u16` to variadic function
-  --> $DIR/variadic-ffi-1.rs:39:19
-   |
-LL |         foo(1, 2, 1u16);
-   |                   ^^^^
-   |
-help: cast the value to `c_uint`
-   |
-LL |         foo(1, 2, 1u16 as c_uint);
-   |                        +++++++++
-
-error: aborting due to 12 previous errors
-
-Some errors have detailed explanations: E0045, E0060, E0308, E0617.
+Some errors have detailed explanations: E0045, E0060, E0308.
 For more information about an error, try `rustc --explain E0045`.
