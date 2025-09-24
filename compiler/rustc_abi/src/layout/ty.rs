@@ -276,17 +276,25 @@ impl<'a, Ty> TyAndLayout<'a, Ty> {
     /// non-Rustic ABI (this is true for structs annotated with the
     /// `#[rustc_pass_indirectly_in_non_rustic_abis]` attribute).
     ///
+    /// This attribute can be used to emulate array-to-pointer decay like in C: when an array is
+    /// passed to a function, what actually happens is that a pointer to that array is passed.
+    ///
     /// This function handles transparent types automatically.
     pub fn pass_indirectly_in_non_rustic_abis<C>(mut self, cx: &C) -> bool
     where
         Ty: TyAbiInterface<'a, C> + Copy,
     {
-        while self.is_transparent()
-            && let Some((_, field)) = self.non_1zst_field(cx)
-        {
-            self = field;
+        loop {
+            if Ty::is_pass_indirectly_in_non_rustic_abis_flag_set(self) {
+                return true;
+            } else if self.is_transparent()
+                && let Some((_, field)) = self.non_1zst_field(cx)
+            {
+                self = field;
+            } else {
+                return false;
+            }
         }
-        Ty::is_pass_indirectly_in_non_rustic_abis_flag_set(self)
     }
 
     /// Finds the one field that is not a 1-ZST.
