@@ -166,7 +166,7 @@ fn is_valid_cmse_output<'tcx>(
 
     let typing_env = ty::TypingEnv::fully_monomorphized();
 
-    let mut ret_ty = fn_sig.output();
+    let ret_ty = fn_sig.output();
     let layout = tcx.layout_of(typing_env.as_query_input(ret_ty))?;
     let size = layout.layout.size().bytes();
 
@@ -176,31 +176,13 @@ fn is_valid_cmse_output<'tcx>(
         return Ok(false);
     }
 
-    // next we need to peel any repr(transparent) layers off
-    'outer: loop {
-        let ty::Adt(adt_def, args) = ret_ty.kind() else {
-            break;
-        };
-
-        if !adt_def.repr().transparent() {
-            break;
-        }
-
-        // the first field with non-trivial size and alignment must be the data
-        for variant_def in adt_def.variants() {
-            for field_def in variant_def.fields.iter() {
-                let ty = field_def.ty(tcx, args);
-                let layout = tcx.layout_of(typing_env.as_query_input(ty))?;
-
-                if !layout.layout.is_1zst() {
-                    ret_ty = ty;
-                    continue 'outer;
-                }
-            }
-        }
+    // Accept scalar 64-bit types.
+    use rustc_abi::{BackendRepr, Float, Integer, Primitive, Scalar};
+    if let BackendRepr::Scalar(Scalar::Initialized { value, .. }) = layout.layout.backend_repr {
+        Ok(matches!(value, Primitive::Int(Integer::I64, _) | Primitive::Float(Float::F64)))
+    } else {
+        Ok(false)
     }
-
-    Ok(ret_ty == tcx.types.i64 || ret_ty == tcx.types.u64 || ret_ty == tcx.types.f64)
 }
 
 fn should_emit_generic_error<'tcx>(abi: ExternAbi, layout_err: &'tcx LayoutError<'tcx>) -> bool {
