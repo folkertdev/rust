@@ -92,6 +92,10 @@ hir_analysis_cmse_output_stack_spill =
     .note1 = functions with the `{$abi}` ABI must pass their result via the available return registers
     .note2 = the result must either be a (transparently wrapped) i64, u64 or f64, or be at most 4 bytes in size
 
+hir_analysis_cmse_union_may_leak_information =
+    passing a union across the security boundary may leak information
+    .note = the bytes not used by the current variant may contain stale secure data
+
 hir_analysis_coerce_multi = implementing `{$trait_name}` does not allow multiple fields to be coerced
     .note = the trait `{$trait_name}` may only be implemented when a single field is being coerced
     .label = these fields must be coerced for `{$trait_name}` to be valid

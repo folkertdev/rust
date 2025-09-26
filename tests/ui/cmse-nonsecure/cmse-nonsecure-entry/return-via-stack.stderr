@@ -61,17 +61,24 @@ LL | pub extern "cmse-nonsecure-entry" fn i128() -> i128 {
    = note: functions with the `"cmse-nonsecure-entry"` ABI must pass their result via the available return registers
    = note: the result must either be a (transparently wrapped) i64, u64 or f64, or be at most 4 bytes in size
 
-error[E0798]: return value of `"cmse-nonsecure-entry"` function too large to pass via registers
+warning: passing a union across the security boundary may leak information
   --> $DIR/return-via-stack.rs:76:54
    |
 LL | pub extern "cmse-nonsecure-entry" fn union_rust() -> ReprRustUnionU64 {
-   |                                                      ^^^^^^^^^^^^^^^^ this type doesn't fit in the available registers
+   |                                                      ^^^^^^^^^^^^^^^^
    |
-   = note: functions with the `"cmse-nonsecure-entry"` ABI must pass their result via the available return registers
-   = note: the result must either be a (transparently wrapped) i64, u64 or f64, or be at most 4 bytes in size
+   = note: the bytes not used by the current variant may contain stale secure data
+
+warning: passing a union across the security boundary may leak information
+  --> $DIR/return-via-stack.rs:82:51
+   |
+LL | pub extern "cmse-nonsecure-entry" fn union_c() -> ReprCUnionU64 {
+   |                                                   ^^^^^^^^^^^^^
+   |
+   = note: the bytes not used by the current variant may contain stale secure data
 
 error[E0798]: return value of `"cmse-nonsecure-entry"` function too large to pass via registers
-  --> $DIR/return-via-stack.rs:81:51
+  --> $DIR/return-via-stack.rs:82:51
    |
 LL | pub extern "cmse-nonsecure-entry" fn union_c() -> ReprCUnionU64 {
    |                                                   ^^^^^^^^^^^^^ this type doesn't fit in the available registers
@@ -79,6 +86,22 @@ LL | pub extern "cmse-nonsecure-entry" fn union_c() -> ReprCUnionU64 {
    = note: functions with the `"cmse-nonsecure-entry"` ABI must pass their result via the available return registers
    = note: the result must either be a (transparently wrapped) i64, u64 or f64, or be at most 4 bytes in size
 
-error: aborting due to 9 previous errors
+warning: passing a union across the security boundary may leak information
+  --> $DIR/return-via-stack.rs:89:62
+   |
+LL | pub extern "cmse-nonsecure-entry" fn maybe_uninit_32bit() -> MaybeUninit<u32> {
+   |                                                              ^^^^^^^^^^^^^^^^
+   |
+   = note: the bytes not used by the current variant may contain stale secure data
+
+warning: passing a union across the security boundary may leak information
+  --> $DIR/return-via-stack.rs:95:62
+   |
+LL | pub extern "cmse-nonsecure-entry" fn maybe_uninit_64bit() -> MaybeUninit<f64> {
+   |                                                              ^^^^^^^^^^^^^^^^
+   |
+   = note: the bytes not used by the current variant may contain stale secure data
+
+error: aborting due to 8 previous errors; 4 warnings emitted
 
 For more information about this error, try `rustc --explain E0798`.

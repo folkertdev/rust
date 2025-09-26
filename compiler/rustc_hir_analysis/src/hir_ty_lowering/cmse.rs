@@ -1,4 +1,4 @@
-use rustc_abi::{BackendRepr, ExternAbi, Float, Integer, Primitive, Scalar};
+use rustc_abi::{BackendRepr, ExternAbi, Float, Integer, Primitive};
 use rustc_errors::{DiagCtxtHandle, E0781, struct_span_code_err};
 use rustc_hir::{self as hir, HirId};
 use rustc_middle::bug;
@@ -76,6 +76,7 @@ pub(crate) fn validate_cmse_abi<'tcx>(
 ///
 /// - the arguments must fit in 4 registers
 /// - the output layout must fit in the output registers
+/// - warn when passing a union (its unused bits may contain stale secure information)
 fn is_valid_cmse_call<'tcx>(
     tcx: TyCtxt<'tcx>,
     dcx: DiagCtxtHandle<'_>,
@@ -93,6 +94,11 @@ fn is_valid_cmse_call<'tcx>(
 
     for (ty, hir_ty) in fn_sig.inputs().iter().zip(fn_decl.inputs) {
         let layout = tcx.layout_of(typing_env.as_query_input(*ty))?;
+
+        // A union may contain secrets in its unused bits.
+        if ty.is_union() {
+            dcx.emit_warn(errors::CmseUnionMayLeakInformation { span: hir_ty.span });
+        }
 
         let align = layout.layout.align().bytes();
         let size = layout.layout.size().bytes();
@@ -114,6 +120,7 @@ fn is_valid_cmse_call<'tcx>(
     }
 
     let ret_layout = tcx.layout_of(typing_env.as_query_input(fn_sig.output()))?;
+
     if !is_valid_cmse_output_layout(ret_layout) {
         let span = fn_decl.output.span();
         dcx.emit_err(errors::CmseOutputStackSpill { span, abi });
@@ -126,6 +133,7 @@ fn is_valid_cmse_call<'tcx>(
 ///
 /// - the arguments must fit in 4 registers
 /// - the output layout must fit in the output registers
+/// - warn when returning a union (its unused bits may contain stale secure information)
 fn is_valid_cmse_entry<'tcx>(
     tcx: TyCtxt<'tcx>,
     dcx: DiagCtxtHandle<'_>,
@@ -163,6 +171,11 @@ fn is_valid_cmse_entry<'tcx>(
         dcx.emit_err(errors::CmseInputsStackSpill { spans: excess_argument_spans, plural, abi });
     }
 
+    // A union may contain secrets in its unused bits.
+    if fn_sig.output().is_union() {
+        dcx.emit_warn(errors::CmseUnionMayLeakInformation { span: fn_decl.output.span() });
+    }
+
     let ret_layout = tcx.layout_of(typing_env.as_query_input(fn_sig.output()))?;
     if !is_valid_cmse_output_layout(ret_layout) {
         let span = fn_decl.output.span();
@@ -187,11 +200,7 @@ fn is_valid_cmse_output_layout<'tcx>(layout: TyAndLayout<'tcx>) -> bool {
         return false;
     };
 
-    let Scalar::Initialized { value, .. } = scalar else {
-        return false;
-    };
-
-    matches!(value, Primitive::Int(Integer::I64, _) | Primitive::Float(Float::F64))
+    matches!(scalar.primitive(), Primitive::Int(Integer::I64, _) | Primitive::Float(Float::F64))
 }
 
 fn should_emit_generic_error<'tcx>(abi: ExternAbi, layout_err: &'tcx LayoutError<'tcx>) -> bool {

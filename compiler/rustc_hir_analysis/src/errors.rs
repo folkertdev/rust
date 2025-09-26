@@ -1653,6 +1653,14 @@ pub(crate) struct CmseEntryGeneric {
     pub span: Span,
 }
 
+#[derive(Diagnostic)]
+#[diag(hir_analysis_cmse_union_may_leak_information)]
+#[note]
+pub(crate) struct CmseUnionMayLeakInformation {
+    #[primary_span]
+    pub span: Span,
+}
+
 #[derive(LintDiagnostic)]
 #[diag(hir_analysis_supertrait_item_shadowing)]
 pub(crate) struct SupertraitItemShadowing {
