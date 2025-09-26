@@ -4,6 +4,7 @@ use rustc_hir::{self as hir, HirId};
 use rustc_middle::bug;
 use rustc_middle::ty::layout::{LayoutError, TyAndLayout};
 use rustc_middle::ty::{self, TyCtxt};
+use rustc_span::Span;
 
 use crate::errors;
 
@@ -107,7 +108,7 @@ pub(crate) fn validate_cmse_abi<'tcx>(
                 }
             }
 
-            match is_valid_cmse_entry_output(tcx, fn_sig) {
+            match is_valid_cmse_entry_output(tcx, dcx, fn_sig, decl.output.span()) {
                 Ok(true) => {}
                 Ok(false) => {
                     let span = decl.output.span();
@@ -171,13 +172,19 @@ fn is_valid_cmse_call_output<'tcx>(
 
 fn is_valid_cmse_entry_output<'tcx>(
     tcx: TyCtxt<'tcx>,
+    dcx: DiagCtxtHandle<'_>,
     fn_sig: ty::PolyFnSig<'tcx>,
+    span: Span,
 ) -> Result<bool, &'tcx LayoutError<'tcx>> {
     // this type is only used for layout computation, which does not rely on regions
     let fn_sig = tcx.instantiate_bound_regions_with_erased(fn_sig);
 
     let typing_env = ty::TypingEnv::fully_monomorphized();
     let layout = tcx.layout_of(typing_env.as_query_input(fn_sig.output()))?;
+
+    if let BackendRepr::Scalar(Scalar::Union { .. }) = layout.layout.backend_repr {
+        dcx.emit_warn(errors::CmseUnion { span });
+    }
 
     Ok(is_valid_cmse_output_layout(layout))
 }
@@ -193,11 +200,11 @@ fn is_valid_cmse_output_layout<'tcx>(layout: TyAndLayout<'tcx>) -> bool {
     }
 
     // Accept scalar 64-bit types.
-    if let BackendRepr::Scalar(Scalar::Initialized { value, .. }) = layout.layout.backend_repr {
-        matches!(value, Primitive::Int(Integer::I64, _) | Primitive::Float(Float::F64))
-    } else {
-        false
-    }
+    let BackendRepr::Scalar(scalar) = layout.layout.backend_repr else {
+        return false;
+    };
+
+    matches!(scalar.primitive(), Primitive::Int(Integer::I64, _) | Primitive::Float(Float::F64))
 }
 
 fn should_emit_generic_error<'tcx>(abi: ExternAbi, layout_err: &'tcx LayoutError<'tcx>) -> bool {
