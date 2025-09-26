@@ -87,6 +87,7 @@ pub extern "cmse-nonsecure-entry" fn outputs7() -> ReprTransparentStruct<ReprTra
 #[no_mangle]
 pub extern "cmse-nonsecure-entry" fn outputs8() -> ReprTransparentEnumU64 {
     ReprTransparentEnumU64::A(0)
+    //~^ WARN this value crossing a secure boundary may contain (partially) uninitialized data which can leak information
 }
 #[no_mangle]
 pub extern "cmse-nonsecure-entry" fn outputs9() -> U32Compound {

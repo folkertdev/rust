@@ -1,0 +1,11 @@
+warning: this value crossing a secure boundary may contain (partially) uninitialized data which can leak information
+  --> $DIR/via-registers.rs:89:5
+   |
+LL |     ReprTransparentEnumU64::A(0)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: enum and unions have variant-specific padding that may contain stale secure data
+   = note: `#[warn(cmse_uninitialized_leak)]` on by default
+
+warning: 1 warning emitted
+
