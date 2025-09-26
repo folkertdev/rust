@@ -20,3 +20,12 @@ pub fn test(
     f5: extern "cmse-nonsecure-call" fn([u32; 5]),                           //~ ERROR [E0798]
 ) {
 }
+
+#[no_mangle]
+pub fn test_union(
+    f1: extern "cmse-nonsecure-call" fn(MaybeUninit<u32>) -> MaybeUninit<u32>,
+    //~^ WARN: passing a union across the security boundary may leak information
+    f2: extern "cmse-nonsecure-call" fn(MaybeUninit<u64>) -> MaybeUninit<u64>,
+    //~^ WARN: passing a union across the security boundary may leak information
+) {
+}
