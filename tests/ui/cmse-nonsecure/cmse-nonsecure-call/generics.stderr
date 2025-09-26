@@ -4,6 +4,28 @@ error: function pointer types may not have generic parameters
 LL |     f1: extern "cmse-nonsecure-call" fn<U: Copy>(U, u32, u32, u32) -> u64,
    |                                        ^^^^^^^^^
 
+error: an `fn` pointer type cannot be `async`
+  --> $DIR/generics.rs:47:14
+   |
+LL | type Async = async extern "cmse-nonsecure-call" fn();
+   |              ^^^^^ `async` because of this
+   |
+   = note: allowed qualifiers are: `unsafe` and `extern`
+help: remove the `async` qualifier
+   |
+LL - type Async = async extern "cmse-nonsecure-call" fn();
+LL + type Async = extern "cmse-nonsecure-call" fn();
+   |
+
+error[E0670]: `async fn` is not permitted in Rust 2015
+  --> $DIR/generics.rs:47:14
+   |
+LL | type Async = async extern "cmse-nonsecure-call" fn();
+   |              ^^^^^ to use `async fn`, switch to Rust 2018 or later
+   |
+   = help: pass `--edition 2024` to `rustc`
+   = note: for more on editions, read https://doc.rust-lang.org/edition-guide
+
 error[E0412]: cannot find type `U` in this scope
   --> $DIR/generics.rs:14:50
    |
@@ -22,11 +44,29 @@ help: you might be missing a type parameter
 LL | struct Test<T: Copy, U> {
    |                    +++
 
+error[E0658]: `impl Trait` in type aliases is unstable
+  --> $DIR/generics.rs:43:61
+   |
+LL | type ReturnImplTrait = extern "cmse-nonsecure-call" fn() -> impl Copy;
+   |                                                             ^^^^^^^^^
+   |
+   = note: see issue #63063 <https://github.com/rust-lang/rust/issues/63063> for more information
+   = help: add `#![feature(type_alias_impl_trait)]` to the crate attributes to enable
+   = note: this compiler was built on YYYY-MM-DD; consider upgrading it if it is out of date
+
 error[E0562]: `impl Trait` is not allowed in `fn` pointer parameters
   --> $DIR/generics.rs:17:41
    |
 LL |     f2: extern "cmse-nonsecure-call" fn(impl Copy, u32, u32, u32) -> u64,
    |                                         ^^^^^^^^^
+   |
+   = note: `impl Trait` is only allowed in arguments and return types of functions and methods
+
+error[E0562]: `impl Trait` is not allowed in `fn` pointer return types
+  --> $DIR/generics.rs:43:61
+   |
+LL | type ReturnImplTrait = extern "cmse-nonsecure-call" fn() -> impl Copy;
+   |                                                             ^^^^^^^^^
    |
    = note: `impl Trait` is only allowed in arguments and return types of functions and methods
 
@@ -75,7 +115,7 @@ error[E0045]: C-variadic functions with the "cmse-nonsecure-call" calling conven
 LL | type WithVarArgs = extern "cmse-nonsecure-call" fn(u32, ...);
    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ C-variadic function must have a compatible calling convention
 
-error: aborting due to 9 previous errors
+error: aborting due to 13 previous errors
 
-Some errors have detailed explanations: E0045, E0412, E0562, E0798.
+Some errors have detailed explanations: E0045, E0412, E0562, E0658, E0670, E0798.
 For more information about an error, try `rustc --explain E0045`.

@@ -39,3 +39,11 @@ type WithTransparentTraitObject =
 
 type WithVarArgs = extern "cmse-nonsecure-call" fn(u32, ...);
 //~^ ERROR C-variadic functions with the "cmse-nonsecure-call" calling convention are not supported
+
+type ReturnImplTrait = extern "cmse-nonsecure-call" fn() -> impl Copy;
+//~^ ERROR: `impl Trait` in type aliases is unstable
+//~| ERROR: `impl Trait` is not allowed in `fn` pointer return types
+
+type Async = async extern "cmse-nonsecure-call" fn();
+//~^ ERROR: an `fn` pointer type cannot be `async`
+//~| ERROR: `async fn` is not permitted in Rust 2015
