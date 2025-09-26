@@ -1,8 +1,8 @@
-use rustc_abi::ExternAbi;
+use rustc_abi::{BackendRepr, ExternAbi, Float, Integer, Primitive, Scalar};
 use rustc_errors::{DiagCtxtHandle, E0781, struct_span_code_err};
 use rustc_hir::{self as hir, HirId};
 use rustc_middle::bug;
-use rustc_middle::ty::layout::LayoutError;
+use rustc_middle::ty::layout::{LayoutError, TyAndLayout};
 use rustc_middle::ty::{self, TyCtxt};
 
 use crate::errors;
@@ -65,7 +65,7 @@ pub(crate) fn validate_cmse_abi<'tcx>(
                 }
             }
 
-            match is_valid_cmse_output(tcx, fn_sig) {
+            match is_valid_cmse_call_output(tcx, fn_sig) {
                 Ok(true) => {}
                 Ok(false) => {
                     let span = fn_ptr_ty.decl.output.span();
@@ -107,7 +107,7 @@ pub(crate) fn validate_cmse_abi<'tcx>(
                 }
             }
 
-            match is_valid_cmse_output(tcx, fn_sig) {
+            match is_valid_cmse_entry_output(tcx, fn_sig) {
                 Ok(true) => {}
                 Ok(false) => {
                     let span = decl.output.span();
@@ -156,8 +156,7 @@ fn is_valid_cmse_inputs<'tcx>(
     }
 }
 
-/// Returns whether the output will fit into the available registers
-fn is_valid_cmse_output<'tcx>(
+fn is_valid_cmse_call_output<'tcx>(
     tcx: TyCtxt<'tcx>,
     fn_sig: ty::PolyFnSig<'tcx>,
 ) -> Result<bool, &'tcx LayoutError<'tcx>> {
@@ -165,23 +164,39 @@ fn is_valid_cmse_output<'tcx>(
     let fn_sig = tcx.instantiate_bound_regions_with_erased(fn_sig);
 
     let typing_env = ty::TypingEnv::fully_monomorphized();
+    let layout = tcx.layout_of(typing_env.as_query_input(fn_sig.output()))?;
 
-    let ret_ty = fn_sig.output();
-    let layout = tcx.layout_of(typing_env.as_query_input(ret_ty))?;
+    Ok(is_valid_cmse_output_layout(layout))
+}
+
+fn is_valid_cmse_entry_output<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    fn_sig: ty::PolyFnSig<'tcx>,
+) -> Result<bool, &'tcx LayoutError<'tcx>> {
+    // this type is only used for layout computation, which does not rely on regions
+    let fn_sig = tcx.instantiate_bound_regions_with_erased(fn_sig);
+
+    let typing_env = ty::TypingEnv::fully_monomorphized();
+    let layout = tcx.layout_of(typing_env.as_query_input(fn_sig.output()))?;
+
+    Ok(is_valid_cmse_output_layout(layout))
+}
+
+/// Returns whether the output will fit into the available registers
+fn is_valid_cmse_output_layout<'tcx>(layout: TyAndLayout<'tcx>) -> bool {
     let size = layout.layout.size().bytes();
 
     if size <= 4 {
-        return Ok(true);
+        return true;
     } else if size > 8 {
-        return Ok(false);
+        return false;
     }
 
     // Accept scalar 64-bit types.
-    use rustc_abi::{BackendRepr, Float, Integer, Primitive, Scalar};
     if let BackendRepr::Scalar(Scalar::Initialized { value, .. }) = layout.layout.backend_repr {
-        Ok(matches!(value, Primitive::Int(Integer::I64, _) | Primitive::Float(Float::F64)))
+        matches!(value, Primitive::Int(Integer::I64, _) | Primitive::Float(Float::F64))
     } else {
-        Ok(false)
+        false
     }
 }
 
