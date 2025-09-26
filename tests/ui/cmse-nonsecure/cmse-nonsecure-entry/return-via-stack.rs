@@ -74,11 +74,25 @@ pub union ReprCUnionU64 {
 #[no_mangle]
 #[allow(improper_ctypes_definitions)]
 pub extern "cmse-nonsecure-entry" fn union_rust() -> ReprRustUnionU64 {
-    //~^ ERROR [E0798]
+    //~^ WARN passing a union across the security boundary may leak information
     ReprRustUnionU64 { _unused: 1 }
 }
+
 #[no_mangle]
 pub extern "cmse-nonsecure-entry" fn union_c() -> ReprCUnionU64 {
     //~^ ERROR [E0798]
+    //~| WARN passing a union across the security boundary may leak information
     ReprCUnionU64 { _unused: 2 }
+}
+
+#[no_mangle]
+pub extern "cmse-nonsecure-entry" fn maybe_uninit_32bit() -> MaybeUninit<u32> {
+    //~^ WARN passing a union across the security boundary may leak information
+    MaybeUninit::uninit()
+}
+
+#[no_mangle]
+pub extern "cmse-nonsecure-entry" fn maybe_uninit_64bit() -> MaybeUninit<f64> {
+    //~^ WARN passing a union across the security boundary may leak information
+    MaybeUninit::new(3.14)
 }

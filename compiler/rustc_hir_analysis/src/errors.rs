@@ -1648,6 +1648,14 @@ pub(crate) struct CmseImplTrait {
 }
 
 #[derive(Diagnostic)]
+#[diag(hir_analysis_cmse_union_may_leak_information)]
+#[note]
+pub(crate) struct CmseUnionMayLeakInformation {
+    #[primary_span]
+    pub span: Span,
+}
+
+#[derive(Diagnostic)]
 #[diag(hir_analysis_bad_return_type_notation_position)]
 pub(crate) struct BadReturnTypeNotation {
     #[primary_span]

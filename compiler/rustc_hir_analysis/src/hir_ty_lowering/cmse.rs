@@ -1,8 +1,8 @@
-use rustc_abi::{BackendRepr, ExternAbi, Float, Integer, Primitive, Scalar};
+use rustc_abi::{BackendRepr, ExternAbi, Float, Integer, Primitive};
 use rustc_errors::{DiagCtxtHandle, E0781, struct_span_code_err};
 use rustc_hir::{self as hir, HirId};
 use rustc_middle::bug;
-use rustc_middle::ty::layout::{LayoutError, TyAndLayout};
+use rustc_middle::ty::layout::{LayoutCx, LayoutError, TyAndLayout};
 use rustc_middle::ty::{self, TyCtxt, TypeVisitableExt};
 use rustc_span::Span;
 
@@ -90,6 +90,13 @@ fn is_valid_cmse_inputs<'tcx>(
             .layout_of(ty::TypingEnv::fully_monomorphized().as_query_input(*ty))
             .map_err(|e| (hir_ty.span, e))?;
 
+        // A union or niche may contain secrets in its unused bits.
+        if abi == ExternAbi::CmseNonSecureCall {
+            if layout_contains_union(tcx, &layout) {
+                dcx.emit_warn(errors::CmseUnionMayLeakInformation { span: hir_ty.span });
+            }
+        }
+
         let align = layout.layout.align().bytes();
         let size = layout.layout.size().bytes();
 
@@ -141,6 +148,13 @@ fn is_valid_cmse_output<'tcx>(
     let typing_env = ty::TypingEnv::fully_monomorphized();
     let layout = tcx.layout_of(typing_env.as_query_input(return_type))?;
 
+    // A union or niche may contain secrets in its unused bits.
+    if abi == ExternAbi::CmseNonSecureEntry {
+        if layout_contains_union(tcx, &layout) {
+            dcx.emit_warn(errors::CmseUnionMayLeakInformation { span: fn_decl.output.span() });
+        }
+    }
+
     if !is_valid_cmse_output_layout(layout) {
         dcx.emit_err(errors::CmseOutputStackSpill { span: fn_decl.output.span(), abi });
     }
@@ -163,11 +177,7 @@ fn is_valid_cmse_output_layout<'tcx>(layout: TyAndLayout<'tcx>) -> bool {
         return false;
     };
 
-    let Scalar::Initialized { value, .. } = scalar else {
-        return false;
-    };
-
-    matches!(value, Primitive::Int(Integer::I64, _) | Primitive::Float(Float::F64))
+    matches!(scalar.primitive(), Primitive::Int(Integer::I64, _) | Primitive::Float(Float::F64))
 }
 
 fn should_emit_layout_error<'tcx>(abi: ExternAbi, layout_err: &'tcx LayoutError<'tcx>) -> bool {
@@ -193,4 +203,40 @@ fn should_emit_layout_error<'tcx>(abi: ExternAbi, layout_err: &'tcx LayoutError<
             false // not our job to report these
         }
     }
+}
+
+/// Check whether any part of the layout is a union, which may contain secure data still.
+fn layout_contains_union<'tcx>(tcx: TyCtxt<'tcx>, layout: &TyAndLayout<'tcx>) -> bool {
+    if layout.ty.is_union() {
+        return true;
+    }
+
+    let typing_env = ty::TypingEnv::fully_monomorphized();
+    let cx = LayoutCx::new(tcx, typing_env);
+
+    match &layout.variants {
+        rustc_abi::Variants::Single { .. } => {
+            for i in 0..layout.fields.count() {
+                if layout_contains_union(tcx, &layout.field(&cx, i)) {
+                    return true;
+                }
+            }
+        }
+
+        rustc_abi::Variants::Multiple { variants, .. } => {
+            for (variant_idx, _vdata) in variants.iter_enumerated() {
+                let variant_layout = layout.for_variant(&cx, variant_idx);
+
+                for i in 0..variant_layout.fields.count() {
+                    if layout_contains_union(tcx, &variant_layout.field(&cx, i)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        rustc_abi::Variants::Empty => {}
+    }
+
+    false
 }
