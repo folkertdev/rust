@@ -71,7 +71,7 @@ LL | pub extern "cmse-nonsecure-entry" fn union_rust() -> ReprRustUnionU64 {
    = note: the result must either be a (transparently wrapped) i64, u64 or f64, or be at most 4 bytes in size
 
 error[E0798]: return value of `"cmse-nonsecure-entry"` function too large to pass via registers
-  --> $DIR/return-via-stack.rs:81:51
+  --> $DIR/return-via-stack.rs:82:51
    |
 LL | pub extern "cmse-nonsecure-entry" fn union_c() -> ReprCUnionU64 {
    |                                                   ^^^^^^^^^^^^^ this type doesn't fit in the available registers
@@ -79,6 +79,15 @@ LL | pub extern "cmse-nonsecure-entry" fn union_c() -> ReprCUnionU64 {
    = note: functions with the `"cmse-nonsecure-entry"` ABI must pass their result via the available return registers
    = note: the result must either be a (transparently wrapped) i64, u64 or f64, or be at most 4 bytes in size
 
-error: aborting due to 9 previous errors
+error[E0798]: return value of `"cmse-nonsecure-entry"` function too large to pass via registers
+  --> $DIR/return-via-stack.rs:93:62
+   |
+LL | pub extern "cmse-nonsecure-entry" fn maybe_uninit_64bit() -> MaybeUninit<f64> {
+   |                                                              ^^^^^^^^^^^^^^^^ this type doesn't fit in the available registers
+   |
+   = note: functions with the `"cmse-nonsecure-entry"` ABI must pass their result via the available return registers
+   = note: the result must either be a (transparently wrapped) i64, u64 or f64, or be at most 4 bytes in size
+
+error: aborting due to 10 previous errors
 
 For more information about this error, try `rustc --explain E0798`.

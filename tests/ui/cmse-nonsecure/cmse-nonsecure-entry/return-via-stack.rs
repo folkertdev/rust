@@ -77,8 +77,20 @@ pub extern "cmse-nonsecure-entry" fn union_rust() -> ReprRustUnionU64 {
     //~^ ERROR [E0798]
     ReprRustUnionU64 { _unused: 1 }
 }
+
 #[no_mangle]
 pub extern "cmse-nonsecure-entry" fn union_c() -> ReprCUnionU64 {
     //~^ ERROR [E0798]
     ReprCUnionU64 { _unused: 2 }
+}
+
+#[no_mangle]
+pub extern "cmse-nonsecure-entry" fn maybe_uninit_32bit() -> MaybeUninit<u32> {
+    MaybeUninit::uninit()
+}
+
+#[no_mangle]
+pub extern "cmse-nonsecure-entry" fn maybe_uninit_64bit() -> MaybeUninit<f64> {
+    //~^ ERROR [E0798]
+    MaybeUninit::new(3.14)
 }
