@@ -44,39 +44,11 @@ pub(crate) fn validate_cmse_abi<'tcx>(
                 return;
             };
 
-            match is_valid_cmse_inputs(tcx, fn_sig) {
-                Ok(Ok(())) => {}
-                Ok(Err(index)) => {
-                    // fn(x: u32, u32, u32, u16, y: u16) -> u32,
-                    //                           ^^^^^^
-                    let span = if let Some(ident) = fn_ptr_ty.param_idents[index] {
-                        ident.span.to(fn_ptr_ty.decl.inputs[index].span)
-                    } else {
-                        fn_ptr_ty.decl.inputs[index].span
-                    }
-                    .to(fn_ptr_ty.decl.inputs.last().unwrap().span);
-                    let plural = fn_ptr_ty.param_idents.len() - index != 1;
-                    dcx.emit_err(errors::CmseInputsStackSpill { span, plural, abi });
-                }
-                Err(layout_err) => {
-                    if should_emit_generic_error(abi, layout_err) {
-                        dcx.emit_err(errors::CmseCallGeneric { span: *fn_ptr_span });
-                    }
+            if let Err(layout_err) = is_valid_cmse_call(tcx, dcx, fn_sig, fn_ptr_ty.decl) {
+                if should_emit_generic_error(abi, layout_err) {
+                    dcx.emit_err(errors::CmseCallGeneric { span: *fn_ptr_span });
                 }
             }
-
-            match is_valid_cmse_output(tcx, fn_sig) {
-                Ok(true) => {}
-                Ok(false) => {
-                    let span = fn_ptr_ty.decl.output.span();
-                    dcx.emit_err(errors::CmseOutputStackSpill { span, abi });
-                }
-                Err(layout_err) => {
-                    if should_emit_generic_error(abi, layout_err) {
-                        dcx.emit_err(errors::CmseCallGeneric { span: *fn_ptr_span });
-                    }
-                }
-            };
         }
         ExternAbi::CmseNonSecureEntry => {
             let hir_node = tcx.hir_node(hir_id);
@@ -91,53 +63,36 @@ pub(crate) fn validate_cmse_abi<'tcx>(
                 return;
             }
 
-            match is_valid_cmse_inputs(tcx, fn_sig) {
-                Ok(Ok(())) => {}
-                Ok(Err(index)) => {
-                    // fn f(x: u32, y: u32, z: u32, w: u16, q: u16) -> u32,
-                    //                                      ^^^^^^
-                    let span = decl.inputs[index].span.to(decl.inputs.last().unwrap().span);
-                    let plural = decl.inputs.len() - index != 1;
-                    dcx.emit_err(errors::CmseInputsStackSpill { span, plural, abi });
-                }
-                Err(layout_err) => {
-                    if should_emit_generic_error(abi, layout_err) {
-                        dcx.emit_err(errors::CmseEntryGeneric { span: *fn_sig_span });
-                    }
+            if let Err(layout_err) = is_valid_cmse_entry(tcx, dcx, fn_sig, decl) {
+                if should_emit_generic_error(abi, layout_err) {
+                    dcx.emit_err(errors::CmseEntryGeneric { span: *fn_sig_span });
                 }
             }
-
-            match is_valid_cmse_output(tcx, fn_sig) {
-                Ok(true) => {}
-                Ok(false) => {
-                    let span = decl.output.span();
-                    dcx.emit_err(errors::CmseOutputStackSpill { span, abi });
-                }
-                Err(layout_err) => {
-                    if should_emit_generic_error(abi, layout_err) {
-                        dcx.emit_err(errors::CmseEntryGeneric { span: *fn_sig_span });
-                    }
-                }
-            };
         }
         _ => (),
     }
 }
-
-/// Returns whether the inputs will fit into the available registers
-fn is_valid_cmse_inputs<'tcx>(
+/// Validate the signature of a cmse-nonsecure-call function
+///
+/// - the arguments must fit in 4 registers
+/// - the output layout must fit in the output registers
+fn is_valid_cmse_call<'tcx>(
     tcx: TyCtxt<'tcx>,
+    dcx: DiagCtxtHandle<'_>,
     fn_sig: ty::PolyFnSig<'tcx>,
-) -> Result<Result<(), usize>, &'tcx LayoutError<'tcx>> {
-    let mut span = None;
+    fn_decl: &hir::FnDecl<'tcx>,
+) -> Result<(), &'tcx LayoutError<'tcx>> {
+    let abi = ExternAbi::CmseNonSecureCall;
     let mut accum = 0u64;
+    let mut excess_argument_spans = Vec::new();
 
     // this type is only used for layout computation, which does not rely on regions
     let fn_sig = tcx.instantiate_bound_regions_with_erased(fn_sig);
     let fn_sig = tcx.erase_and_anonymize_regions(fn_sig);
+    let typing_env = ty::TypingEnv::fully_monomorphized();
 
-    for (index, ty) in fn_sig.inputs().iter().enumerate() {
-        let layout = tcx.layout_of(ty::TypingEnv::fully_monomorphized().as_query_input(*ty))?;
+    for (ty, hir_ty) in fn_sig.inputs().iter().zip(fn_decl.inputs) {
+        let layout = tcx.layout_of(typing_env.as_query_input(*ty))?;
 
         let align = layout.layout.align().bytes();
         let size = layout.layout.size().bytes();
@@ -147,29 +102,74 @@ fn is_valid_cmse_inputs<'tcx>(
 
         // i.e. exceeds 4 32-bit registers
         if accum > 16 {
-            span = span.or(Some(index));
+            excess_argument_spans.push(hir_ty.span);
         }
     }
 
-    match span {
-        None => Ok(Ok(())),
-        Some(span) => Ok(Err(span)),
+    if !excess_argument_spans.is_empty() {
+        // fn f(x: u32, y: u32, z: u32, w: u16, q: u16) -> u32,
+        //                                      ^^^^^^
+        let plural = excess_argument_spans.len() != 1;
+        dcx.emit_err(errors::CmseInputsStackSpill { spans: excess_argument_spans, plural, abi });
     }
+
+    let ret_layout = tcx.layout_of(typing_env.as_query_input(fn_sig.output()))?;
+    if !is_valid_cmse_output_layout(ret_layout) {
+        let span = fn_decl.output.span();
+        dcx.emit_err(errors::CmseOutputStackSpill { span, abi });
+    }
+
+    Ok(())
 }
 
-/// Returns whether the output will fit into the available registers
-fn is_valid_cmse_output<'tcx>(
+/// Validate the signature of a cmse-nonsecure-entry function
+///
+/// - the arguments must fit in 4 registers
+/// - the output layout must fit in the output registers
+fn is_valid_cmse_entry<'tcx>(
     tcx: TyCtxt<'tcx>,
+    dcx: DiagCtxtHandle<'_>,
     fn_sig: ty::PolyFnSig<'tcx>,
-) -> Result<bool, &'tcx LayoutError<'tcx>> {
+    fn_decl: &hir::FnDecl<'tcx>,
+) -> Result<(), &'tcx LayoutError<'tcx>> {
+    let abi = ExternAbi::CmseNonSecureEntry;
+    let mut accum = 0u64;
+    let mut excess_argument_spans = Vec::new();
+
     // this type is only used for layout computation, which does not rely on regions
     let fn_sig = tcx.instantiate_bound_regions_with_erased(fn_sig);
     let fn_sig = tcx.erase_and_anonymize_regions(fn_sig);
-
     let typing_env = ty::TypingEnv::fully_monomorphized();
-    let layout = tcx.layout_of(typing_env.as_query_input(fn_sig.output()))?;
 
-    Ok(is_valid_cmse_output_layout(layout))
+    for (ty, hir_ty) in fn_sig.inputs().iter().zip(fn_decl.inputs) {
+        let layout = tcx.layout_of(typing_env.as_query_input(*ty))?;
+
+        let align = layout.layout.align().bytes();
+        let size = layout.layout.size().bytes();
+
+        accum += size;
+        accum = accum.next_multiple_of(Ord::max(4, align));
+
+        // i.e. exceeds 4 32-bit registers
+        if accum > 16 {
+            excess_argument_spans.push(hir_ty.span);
+        }
+    }
+
+    if !excess_argument_spans.is_empty() {
+        // fn f(x: u32, y: u32, z: u32, w: u16, q: u16) -> u32,
+        //                                      ^^^^^^
+        let plural = excess_argument_spans.len() != 1;
+        dcx.emit_err(errors::CmseInputsStackSpill { spans: excess_argument_spans, plural, abi });
+    }
+
+    let ret_layout = tcx.layout_of(typing_env.as_query_input(fn_sig.output()))?;
+    if !is_valid_cmse_output_layout(ret_layout) {
+        let span = fn_decl.output.span();
+        dcx.emit_err(errors::CmseOutputStackSpill { span, abi });
+    }
+
+    Ok(())
 }
 
 /// Returns whether the output will fit into the available registers
