@@ -95,3 +95,9 @@ pub extern "cmse-nonsecure-entry" fn maybe_uninit_64bit() -> MaybeUninit<f64> {
     //~^ WARN: passing a union across the security boundary may leak information
     MaybeUninit::new(3.14)
 }
+
+#[no_mangle]
+extern "cmse-nonsecure-entry" fn return_impl_trait() -> impl Copy {
+    //~^ ERROR: functions with the `"cmse-nonsecure-entry"` ABI cannot contain generics in their type
+    0u128
+}

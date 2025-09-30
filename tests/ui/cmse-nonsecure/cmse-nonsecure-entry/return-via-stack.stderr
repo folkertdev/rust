@@ -94,6 +94,12 @@ LL | pub extern "cmse-nonsecure-entry" fn maybe_uninit_64bit() -> MaybeUninit<f6
    |
    = note: the bytes not used by the current variant may contain stale secure data
 
-error: aborting due to 8 previous errors; 3 warnings emitted
+error[E0798]: functions with the `"cmse-nonsecure-entry"` ABI cannot contain generics in their type
+  --> $DIR/return-via-stack.rs:100:1
+   |
+LL | extern "cmse-nonsecure-entry" fn return_impl_trait() -> impl Copy {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 9 previous errors; 3 warnings emitted
 
 For more information about this error, try `rustc --explain E0798`.

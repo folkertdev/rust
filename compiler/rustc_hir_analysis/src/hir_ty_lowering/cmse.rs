@@ -95,6 +95,7 @@ fn is_valid_cmse_call<'tcx>(
     for (ty, hir_ty) in fn_sig.inputs().iter().zip(fn_decl.inputs) {
         let layout = tcx.layout_of(typing_env.as_query_input(*ty))?;
 
+        // A union may contain secrets in its unused bits.
         if let BackendRepr::Scalar(Scalar::Union { .. }) = layout.layout.backend_repr {
             dcx.emit_warn(errors::CmseUnion { span: hir_ty.span });
         }
@@ -168,8 +169,14 @@ fn is_valid_cmse_entry<'tcx>(
         dcx.emit_err(errors::CmseInputsStackSpill { spans: excess_argument_spans, plural, abi });
     }
 
+    // The layout calculation can get into a cycle with `impl Trait` return types: bail early.
+    if fn_sig.output().is_impl_trait() {
+        return Err(tcx.arena.alloc(LayoutError::TooGeneric(fn_sig.output())));
+    }
+
     let ret_layout = tcx.layout_of(typing_env.as_query_input(fn_sig.output()))?;
 
+    // A union may contain secrets in its unused bits.
     if let BackendRepr::Scalar(Scalar::Union { .. }) = ret_layout.layout.backend_repr {
         dcx.emit_warn(errors::CmseUnion { span: fn_decl.output.span() });
     }
