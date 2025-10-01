@@ -1661,6 +1661,14 @@ pub(crate) struct CmseUnionMayLeakInformation {
     pub span: Span,
 }
 
+#[derive(Diagnostic)]
+#[diag(hir_analysis_cmse_niche_may_leak_information)]
+#[note]
+pub(crate) struct CmseNicheMayLeakInformation {
+    #[primary_span]
+    pub span: Span,
+}
+
 #[derive(LintDiagnostic)]
 #[diag(hir_analysis_supertrait_item_shadowing)]
 pub(crate) struct SupertraitItemShadowing {

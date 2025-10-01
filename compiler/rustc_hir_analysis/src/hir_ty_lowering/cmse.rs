@@ -1,9 +1,10 @@
 use rustc_abi::{BackendRepr, ExternAbi, Float, Integer, Primitive};
 use rustc_errors::{DiagCtxtHandle, E0781, struct_span_code_err};
-use rustc_hir::{self as hir, HirId};
+use rustc_hir::{self as hir, FnPtrTy, HirId};
 use rustc_middle::bug;
-use rustc_middle::ty::layout::{LayoutError, TyAndLayout};
+use rustc_middle::ty::layout::{LayoutCx, LayoutError, TyAndLayout};
 use rustc_middle::ty::{self, TyCtxt};
+use rustc_span::Ident;
 
 use crate::errors;
 
@@ -44,7 +45,8 @@ pub(crate) fn validate_cmse_abi<'tcx>(
                 return;
             };
 
-            if let Err(layout_err) = is_valid_cmse_call(tcx, dcx, fn_sig, fn_ptr_ty.decl) {
+            let FnPtrTy { decl, param_idents, .. } = fn_ptr_ty;
+            if let Err(layout_err) = is_valid_cmse_call(tcx, dcx, fn_sig, decl, param_idents) {
                 if should_emit_generic_error(abi, layout_err) {
                     dcx.emit_err(errors::CmseCallGeneric { span: *fn_ptr_span });
                 }
@@ -72,6 +74,42 @@ pub(crate) fn validate_cmse_abi<'tcx>(
         _ => (),
     }
 }
+
+/// Check whether any part of the layout is a union, which may contain secure data still.
+fn contains_union<'tcx>(tcx: TyCtxt<'tcx>, layout: &TyAndLayout<'tcx>) -> bool {
+    if layout.ty.is_union() {
+        return true;
+    }
+
+    let typing_env = ty::TypingEnv::fully_monomorphized();
+    let cx = LayoutCx::new(tcx, typing_env);
+
+    // Otherwise, recurse into fields/variants
+    match &layout.variants {
+        rustc_abi::Variants::Single { .. } => {
+            for i in 0..layout.fields.count() {
+                if contains_union(tcx, &layout.field(&cx, i)) {
+                    return true;
+                }
+            }
+        }
+        rustc_abi::Variants::Multiple { variants, .. } => {
+            for (variant_idx, _vdata) in variants.iter_enumerated() {
+                let variant_layout = layout.for_variant(&cx, variant_idx);
+
+                for i in 0..variant_layout.fields.count() {
+                    if contains_union(tcx, &variant_layout.field(&cx, i)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        rustc_abi::Variants::Empty => {}
+    }
+
+    false
+}
+
 /// Validate the signature of a cmse-nonsecure-call function
 ///
 /// - the arguments must fit in 4 registers
@@ -82,6 +120,7 @@ fn is_valid_cmse_call<'tcx>(
     dcx: DiagCtxtHandle<'_>,
     fn_sig: ty::PolyFnSig<'tcx>,
     fn_decl: &hir::FnDecl<'tcx>,
+    param_idents: &'tcx [Option<Ident>],
 ) -> Result<(), &'tcx LayoutError<'tcx>> {
     let abi = ExternAbi::CmseNonSecureCall;
     let mut accum = 0u64;
@@ -92,12 +131,19 @@ fn is_valid_cmse_call<'tcx>(
     let fn_sig = tcx.erase_and_anonymize_regions(fn_sig);
     let typing_env = ty::TypingEnv::fully_monomorphized();
 
-    for (ty, hir_ty) in fn_sig.inputs().iter().zip(fn_decl.inputs) {
+    for (ty, (ident, hir_ty)) in fn_sig.inputs().iter().zip(param_idents.iter().zip(fn_decl.inputs))
+    {
         let layout = tcx.layout_of(typing_env.as_query_input(*ty))?;
+        let span = match ident {
+            Some(ident) => ident.span.to(hir_ty.span),
+            None => hir_ty.span,
+        };
 
-        // A union may contain secrets in its unused bits.
-        if ty.is_union() {
-            dcx.emit_warn(errors::CmseUnionMayLeakInformation { span: hir_ty.span });
+        // A union or niche may contain secrets in its unused bits.
+        if layout.largest_niche.is_some() {
+            dcx.emit_warn(errors::CmseNicheMayLeakInformation { span });
+        } else if contains_union(tcx, &layout) {
+            dcx.emit_warn(errors::CmseUnionMayLeakInformation { span });
         }
 
         let align = layout.layout.align().bytes();
@@ -108,7 +154,7 @@ fn is_valid_cmse_call<'tcx>(
 
         // i.e. exceeds 4 32-bit registers
         if accum > 16 {
-            excess_argument_spans.push(hir_ty.span);
+            excess_argument_spans.push(span);
         }
     }
 
@@ -171,12 +217,15 @@ fn is_valid_cmse_entry<'tcx>(
         dcx.emit_err(errors::CmseInputsStackSpill { spans: excess_argument_spans, plural, abi });
     }
 
-    // A union may contain secrets in its unused bits.
-    if fn_sig.output().is_union() {
+    let ret_layout = tcx.layout_of(typing_env.as_query_input(fn_sig.output()))?;
+
+    // A union or niche may contain secrets in its unused bits.
+    if ret_layout.largest_niche.is_some() {
+        dcx.emit_warn(errors::CmseNicheMayLeakInformation { span: fn_decl.output.span() });
+    } else if contains_union(tcx, &ret_layout) {
         dcx.emit_warn(errors::CmseUnionMayLeakInformation { span: fn_decl.output.span() });
     }
 
-    let ret_layout = tcx.layout_of(typing_env.as_query_input(fn_sig.output()))?;
     if !is_valid_cmse_output_layout(ret_layout) {
         let span = fn_decl.output.span();
         dcx.emit_err(errors::CmseOutputStackSpill { span, abi });

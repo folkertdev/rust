@@ -21,14 +21,17 @@ struct Test<T: Copy> {
 }
 
 type WithReference = extern "cmse-nonsecure-call" fn(&usize);
+//~^ WARN passing a type with a niche across the security boundary may leak information
 
 trait Trait {}
 type WithTraitObject = extern "cmse-nonsecure-call" fn(&dyn Trait) -> &dyn Trait;
 //~^ ERROR return value of `"cmse-nonsecure-call"` function too large to pass via registers [E0798]
+//~| WARN passing a type with a niche across the security boundary may leak information
 
 type WithStaticTraitObject =
     extern "cmse-nonsecure-call" fn(&'static dyn Trait) -> &'static dyn Trait;
 //~^ ERROR return value of `"cmse-nonsecure-call"` function too large to pass via registers [E0798]
+//~| WARN passing a type with a niche across the security boundary may leak information
 
 #[repr(transparent)]
 struct WrapperTransparent<'a>(&'a dyn Trait);
@@ -36,6 +39,7 @@ struct WrapperTransparent<'a>(&'a dyn Trait);
 type WithTransparentTraitObject =
     extern "cmse-nonsecure-call" fn(WrapperTransparent) -> WrapperTransparent;
 //~^ ERROR return value of `"cmse-nonsecure-call"` function too large to pass via registers [E0798]
+//~| WARN passing a type with a niche across the security boundary may leak information
 
 type WithVarArgs = extern "cmse-nonsecure-call" fn(u32, ...);
 //~^ ERROR C-variadic functions with the "cmse-nonsecure-call" calling convention are not supported
