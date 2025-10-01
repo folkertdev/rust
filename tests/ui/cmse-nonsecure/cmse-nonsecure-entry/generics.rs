@@ -45,11 +45,13 @@ trait Trait {}
 
 extern "cmse-nonsecure-entry" fn trait_object(x: &dyn Trait) -> &dyn Trait {
     //~^ ERROR return value of `"cmse-nonsecure-entry"` function too large to pass via registers [E0798]
+    //~| WARN passing a type with a niche across the security boundary may leak information
     x
 }
 
 extern "cmse-nonsecure-entry" fn static_trait_object(x: &'static dyn Trait) -> &'static dyn Trait {
     //~^ ERROR return value of `"cmse-nonsecure-entry"` function too large to pass via registers [E0798]
+    //~| WARN passing a type with a niche across the security boundary may leak information
     x
 }
 
@@ -58,6 +60,7 @@ struct WrapperTransparent<'a>(&'a dyn Trait);
 
 extern "cmse-nonsecure-entry" fn wrapped_trait_object(x: WrapperTransparent) -> WrapperTransparent {
     //~^ ERROR return value of `"cmse-nonsecure-entry"` function too large to pass via registers [E0798]
+    //~| WARN passing a type with a niche across the security boundary may leak information
     x
 }
 

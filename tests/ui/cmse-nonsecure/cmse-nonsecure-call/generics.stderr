@@ -66,8 +66,24 @@ error[E0798]: generics are not allowed in `extern "cmse-nonsecure-call"` signatu
 LL |     f5: extern "cmse-nonsecure-call" fn(Wrapper<T>, u32, u32, u32) -> u64,
    |                                         ^^^^^^^^^^
 
+warning: passing a type with a niche across the security boundary may leak information
+  --> $DIR/generics.rs:27:54
+   |
+LL | type WithReference = extern "cmse-nonsecure-call" fn(&usize);
+   |                                                      ^^^^^^
+   |
+   = note: the niche bits may contain stale secure data
+
+warning: passing a type with a niche across the security boundary may leak information
+  --> $DIR/generics.rs:31:56
+   |
+LL | type WithTraitObject = extern "cmse-nonsecure-call" fn(&dyn Trait) -> &dyn Trait;
+   |                                                        ^^^^^^^^^^
+   |
+   = note: the niche bits may contain stale secure data
+
 error[E0798]: return value of `"cmse-nonsecure-call"` function too large to pass via registers
-  --> $DIR/generics.rs:30:71
+  --> $DIR/generics.rs:31:71
    |
 LL | type WithTraitObject = extern "cmse-nonsecure-call" fn(&dyn Trait) -> &dyn Trait;
    |                                                                       ^^^^^^^^^^ this type doesn't fit in the available registers
@@ -75,8 +91,16 @@ LL | type WithTraitObject = extern "cmse-nonsecure-call" fn(&dyn Trait) -> &dyn 
    = note: functions with the `"cmse-nonsecure-call"` ABI must pass their result via the available return registers
    = note: the result must either be a (transparently wrapped) i64, u64 or f64, or be at most 4 bytes in size
 
+warning: passing a type with a niche across the security boundary may leak information
+  --> $DIR/generics.rs:36:37
+   |
+LL |     extern "cmse-nonsecure-call" fn(&'static dyn Trait) -> &'static dyn Trait;
+   |                                     ^^^^^^^^^^^^^^^^^^
+   |
+   = note: the niche bits may contain stale secure data
+
 error[E0798]: return value of `"cmse-nonsecure-call"` function too large to pass via registers
-  --> $DIR/generics.rs:34:60
+  --> $DIR/generics.rs:36:60
    |
 LL |     extern "cmse-nonsecure-call" fn(&'static dyn Trait) -> &'static dyn Trait;
    |                                                            ^^^^^^^^^^^^^^^^^^ this type doesn't fit in the available registers
@@ -84,8 +108,16 @@ LL |     extern "cmse-nonsecure-call" fn(&'static dyn Trait) -> &'static dyn Tra
    = note: functions with the `"cmse-nonsecure-call"` ABI must pass their result via the available return registers
    = note: the result must either be a (transparently wrapped) i64, u64 or f64, or be at most 4 bytes in size
 
+warning: passing a type with a niche across the security boundary may leak information
+  --> $DIR/generics.rs:44:37
+   |
+LL |     extern "cmse-nonsecure-call" fn(WrapperTransparent) -> WrapperTransparent;
+   |                                     ^^^^^^^^^^^^^^^^^^
+   |
+   = note: the niche bits may contain stale secure data
+
 error[E0798]: return value of `"cmse-nonsecure-call"` function too large to pass via registers
-  --> $DIR/generics.rs:41:60
+  --> $DIR/generics.rs:44:60
    |
 LL |     extern "cmse-nonsecure-call" fn(WrapperTransparent) -> WrapperTransparent;
    |                                                            ^^^^^^^^^^^^^^^^^^ this type doesn't fit in the available registers
@@ -94,12 +126,12 @@ LL |     extern "cmse-nonsecure-call" fn(WrapperTransparent) -> WrapperTranspare
    = note: the result must either be a (transparently wrapped) i64, u64 or f64, or be at most 4 bytes in size
 
 error[E0045]: C-variadic functions with the "cmse-nonsecure-call" calling convention are not supported
-  --> $DIR/generics.rs:44:20
+  --> $DIR/generics.rs:48:20
    |
 LL | type WithVarArgs = extern "cmse-nonsecure-call" fn(u32, ...);
    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ C-variadic function must have a compatible calling convention
 
-error: aborting due to 12 previous errors
+error: aborting due to 12 previous errors; 4 warnings emitted
 
 Some errors have detailed explanations: E0045, E0412, E0562, E0798.
 For more information about an error, try `rustc --explain E0045`.

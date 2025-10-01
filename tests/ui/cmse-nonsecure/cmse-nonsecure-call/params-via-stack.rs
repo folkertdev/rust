@@ -44,3 +44,19 @@ pub fn test_union(
     //~^ WARN passing a union across the security boundary may leak information
 ) {
 }
+
+enum E {
+    A(u64),
+    B,
+    C,
+}
+
+#[no_mangle]
+pub fn test_enum(
+    f1: extern "cmse-nonsecure-call" fn(Option<&'static u8>), // no niche, so no potential leakage
+    f2: extern "cmse-nonsecure-call" fn(Option<*const u8>),
+    //~^ WARN: passing a type with a niche across the security boundary may leak information
+    f3: extern "cmse-nonsecure-call" fn(E),
+    //~^ WARN: passing a type with a niche across the security boundary may leak information
+) {
+}

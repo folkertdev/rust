@@ -96,3 +96,26 @@ pub extern "cmse-nonsecure-entry" fn maybe_uninit_64bit() -> MaybeUninit<f64> {
     //~^ WARN passing a union across the security boundary may leak information
     MaybeUninit::new(3.14)
 }
+
+#[no_mangle]
+pub extern "cmse-nonsecure-entry" fn option_reference() -> Option<&'static u16> {
+    Option::None
+}
+
+#[no_mangle]
+pub extern "cmse-nonsecure-entry" fn option_u16() -> Option<u16> {
+    //~^ WARN passing a type with a niche across the security boundary may leak information
+    Option::None
+}
+
+#[repr(C, u8)]
+enum Enum {
+    A(u8),
+    B,
+}
+
+#[no_mangle]
+pub extern "cmse-nonsecure-entry" fn option_enum() -> Enum {
+    //~^ WARN passing a type with a niche across the security boundary may leak information
+    Enum::B
+}

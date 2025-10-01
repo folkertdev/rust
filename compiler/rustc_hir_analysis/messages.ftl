@@ -83,6 +83,10 @@ hir_analysis_cmse_inputs_stack_spill =
     .label = does not fit in the available registers
     .note = functions with the `{$abi}` ABI must pass all their arguments via the 4 32-bit argument registers
 
+hir_analysis_cmse_niche_may_leak_information =
+    passing a type with a niche across the security boundary may leak information
+    .note = the niche bits may contain stale secure data
+
 hir_analysis_cmse_output_stack_spill =
     return value of `{$abi}` function too large to pass via registers
     .label = this type doesn't fit in the available registers

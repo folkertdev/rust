@@ -5,31 +5,31 @@ LL |     _: U,
    |        ^
 
 error[E0798]: generics are not allowed in `extern "cmse-nonsecure-entry"` signatures
-  --> $DIR/generics.rs:64:48
+  --> $DIR/generics.rs:67:48
    |
 LL | extern "cmse-nonsecure-entry" fn impl_trait(_: impl Copy, _: u32, _: u32, _: u32) -> u64 {
    |                                                ^^^^^^^^^
 
 error[E0798]: generics are not allowed in `extern "cmse-nonsecure-entry"` signatures
-  --> $DIR/generics.rs:79:57
+  --> $DIR/generics.rs:82:57
    |
 LL | extern "cmse-nonsecure-entry" fn identity_impl_trait(v: impl Copy) -> impl Copy {
    |                                                         ^^^^^^^^^
 
 error[E0798]: `impl Trait` is not allowed in `extern "cmse-nonsecure-entry"` signatures
-  --> $DIR/generics.rs:79:71
+  --> $DIR/generics.rs:82:71
    |
 LL | extern "cmse-nonsecure-entry" fn identity_impl_trait(v: impl Copy) -> impl Copy {
    |                                                                       ^^^^^^^^^
 
 error[E0798]: generics are not allowed in `extern "cmse-nonsecure-entry"` signatures
-  --> $DIR/generics.rs:86:8
+  --> $DIR/generics.rs:89:8
    |
 LL |     v: (impl Copy, i32),
    |        ^^^^^^^^^^^^^^^^
 
 error[E0798]: `impl Trait` is not allowed in `extern "cmse-nonsecure-entry"` signatures
-  --> $DIR/generics.rs:88:6
+  --> $DIR/generics.rs:91:6
    |
 LL | ) -> (impl Copy, i32) {
    |      ^^^^^^^^^^^^^^^^
@@ -46,6 +46,14 @@ error[E0798]: generics are not allowed in `extern "cmse-nonsecure-entry"` signat
 LL |         _: Wrapper<T>,
    |            ^^^^^^^^^^
 
+warning: passing a type with a niche across the security boundary may leak information
+  --> $DIR/generics.rs:46:65
+   |
+LL | extern "cmse-nonsecure-entry" fn trait_object(x: &dyn Trait) -> &dyn Trait {
+   |                                                                 ^^^^^^^^^^
+   |
+   = note: the niche bits may contain stale secure data
+
 error[E0798]: return value of `"cmse-nonsecure-entry"` function too large to pass via registers
   --> $DIR/generics.rs:46:65
    |
@@ -55,8 +63,16 @@ LL | extern "cmse-nonsecure-entry" fn trait_object(x: &dyn Trait) -> &dyn Trait 
    = note: functions with the `"cmse-nonsecure-entry"` ABI must pass their result via the available return registers
    = note: the result must either be a (transparently wrapped) i64, u64 or f64, or be at most 4 bytes in size
 
+warning: passing a type with a niche across the security boundary may leak information
+  --> $DIR/generics.rs:52:80
+   |
+LL | extern "cmse-nonsecure-entry" fn static_trait_object(x: &'static dyn Trait) -> &'static dyn Trait {
+   |                                                                                ^^^^^^^^^^^^^^^^^^
+   |
+   = note: the niche bits may contain stale secure data
+
 error[E0798]: return value of `"cmse-nonsecure-entry"` function too large to pass via registers
-  --> $DIR/generics.rs:51:80
+  --> $DIR/generics.rs:52:80
    |
 LL | extern "cmse-nonsecure-entry" fn static_trait_object(x: &'static dyn Trait) -> &'static dyn Trait {
    |                                                                                ^^^^^^^^^^^^^^^^^^ this type doesn't fit in the available registers
@@ -64,8 +80,16 @@ LL | extern "cmse-nonsecure-entry" fn static_trait_object(x: &'static dyn Trait)
    = note: functions with the `"cmse-nonsecure-entry"` ABI must pass their result via the available return registers
    = note: the result must either be a (transparently wrapped) i64, u64 or f64, or be at most 4 bytes in size
 
+warning: passing a type with a niche across the security boundary may leak information
+  --> $DIR/generics.rs:61:81
+   |
+LL | extern "cmse-nonsecure-entry" fn wrapped_trait_object(x: WrapperTransparent) -> WrapperTransparent {
+   |                                                                                 ^^^^^^^^^^^^^^^^^^
+   |
+   = note: the niche bits may contain stale secure data
+
 error[E0798]: return value of `"cmse-nonsecure-entry"` function too large to pass via registers
-  --> $DIR/generics.rs:59:81
+  --> $DIR/generics.rs:61:81
    |
 LL | extern "cmse-nonsecure-entry" fn wrapped_trait_object(x: WrapperTransparent) -> WrapperTransparent {
    |                                                                                 ^^^^^^^^^^^^^^^^^^ this type doesn't fit in the available registers
@@ -74,17 +98,17 @@ LL | extern "cmse-nonsecure-entry" fn wrapped_trait_object(x: WrapperTransparent
    = note: the result must either be a (transparently wrapped) i64, u64 or f64, or be at most 4 bytes in size
 
 error[E0798]: `impl Trait` is not allowed in `extern "cmse-nonsecure-entry"` signatures
-  --> $DIR/generics.rs:69:57
+  --> $DIR/generics.rs:72:57
    |
 LL | extern "cmse-nonsecure-entry" fn return_impl_trait() -> impl Copy {
    |                                                         ^^^^^^^^^
 
 error[E0798]: `impl Trait` is not allowed in `extern "cmse-nonsecure-entry"` signatures
-  --> $DIR/generics.rs:74:64
+  --> $DIR/generics.rs:77:64
    |
 LL | extern "cmse-nonsecure-entry" fn return_impl_trait_nested() -> (impl Copy, i32) {
    |                                                                ^^^^^^^^^^^^^^^^
 
-error: aborting due to 13 previous errors
+error: aborting due to 13 previous errors; 3 warnings emitted
 
 For more information about this error, try `rustc --explain E0798`.

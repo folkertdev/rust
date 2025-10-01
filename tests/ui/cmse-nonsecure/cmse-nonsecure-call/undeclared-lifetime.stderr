@@ -14,6 +14,14 @@ help: consider introducing lifetime `'a` here
 LL | fn foo<'a>() {
    |       ++++
 
-error: aborting due to 1 previous error
+warning: passing a type with a niche across the security boundary may leak information
+  --> $DIR/undeclared-lifetime.rs:15:42
+   |
+LL |     id::<extern "cmse-nonsecure-call" fn(&'a ())>(PhantomData);
+   |                                          ^^^^^^
+   |
+   = note: the niche bits may contain stale secure data
+
+error: aborting due to 1 previous error; 1 warning emitted
 
 For more information about this error, try `rustc --explain E0261`.

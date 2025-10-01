@@ -92,6 +92,10 @@ fn is_valid_cmse_inputs<'tcx>(
 
         // A union or niche may contain secrets in its unused bits.
         if abi == ExternAbi::CmseNonSecureCall {
+            if layout.largest_niche.is_some() {
+                dcx.emit_warn(errors::CmseNicheMayLeakInformation { span: hir_ty.span });
+            }
+
             if layout_contains_union(tcx, &layout) {
                 dcx.emit_warn(errors::CmseUnionMayLeakInformation { span: hir_ty.span });
             }
@@ -150,6 +154,10 @@ fn is_valid_cmse_output<'tcx>(
 
     // A union or niche may contain secrets in its unused bits.
     if abi == ExternAbi::CmseNonSecureEntry {
+        if layout.largest_niche.is_some() {
+            dcx.emit_warn(errors::CmseNicheMayLeakInformation { span: fn_decl.output.span() });
+        }
+
         if layout_contains_union(tcx, &layout) {
             dcx.emit_warn(errors::CmseUnionMayLeakInformation { span: fn_decl.output.span() });
         }

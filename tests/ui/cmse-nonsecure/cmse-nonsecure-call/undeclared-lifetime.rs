@@ -14,6 +14,7 @@ use minicore::*;
 fn foo() {
     id::<extern "cmse-nonsecure-call" fn(&'a ())>(PhantomData);
     //~^ ERROR use of undeclared lifetime name `'a`
+    //~| WARN passing a type with a niche across the security boundary may leak information
 }
 
 fn id<T>(x: PhantomData<T>) -> PhantomData<T> {
