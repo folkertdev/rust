@@ -18,6 +18,7 @@ use self::simd::EvalContextExt as _;
 use crate::*;
 
 use crate::machine::VaListKey;
+use crate::machine::VarArgCursor;
 use rustc_const_eval::interpret::Pointer;
 
 /// Compute a stable key for a particular `VaListImpl` object in memory.
@@ -27,30 +28,96 @@ fn va_list_key<'tcx>(
     ecx: &MiriInterpCx<'tcx>,
     ap_ref: &OpTy<'tcx>,
 ) -> InterpResult<'tcx, VaListKey> {
-    // `ap_ref` has type `&mut VaListImpl<'_>` (or `&VaListImpl<'_>`), so its
-    // value is a pointer to the `VaListImpl` object.
+    // `ap_ref` is a reference, so its *value* is a pointer to the `VaListImpl` object.
     let ptr: Pointer<_> = ecx.read_pointer(ap_ref)?;
 
-    // Convert the pointer to (AllocId, offset) using Miri's ptr_get_alloc helper.
-    // `size` argument is 0 here since we are just looking up the allocation.
-    let (alloc_id, offset) = match ecx.ptr_get_alloc(ptr, 0) {
-        Some((alloc_id, offset)) => (alloc_id, offset),
-        None => {
-            // Dangling or invalid pointer -> UB.
-            throw_ub_format!("va_list pointer does not point to a valid allocation");
-        }
-    };
+    let (alloc_id, offset, _prov) = ecx.ptr_try_get_alloc_id(ptr, 0).unwrap();
 
     interp_ok(VaListKey { alloc_id, offset })
 }
 
 fn intrinsic_va_end<'tcx>(
     ecx: &mut MiriInterpCx<'tcx>,
-    args: &[OpTy<'tcx>],
+    va_list: &OpTy<'tcx>,
 ) -> InterpResult<'tcx, ()> {
     // `args[0]` is the `&mut VaListImpl`.
-    let key = va_list_key(ecx, &args[0])?;
+    let key = va_list_key(ecx, va_list)?;
     ecx.machine.vararg_cursors.remove(&key);
+
+    interp_ok(())
+}
+
+fn intrinsic_va_start<'tcx>(
+    ecx: &mut MiriInterpCx<'tcx>,
+    va_list: &OpTy<'tcx>,
+) -> InterpResult<'tcx, ()> {
+    // `va_list` is `&mut VaListImpl<'_>`.
+    let key = va_list_key(ecx, va_list)?;
+
+    // Current frame is the one that owns the `...` arguments.
+    let frame = ecx.frame_idx();
+
+    // Start cursor at the first vararg.
+    let cursor = VarArgCursor { frame, next: 0 };
+
+    // Record (or overwrite) the cursor for this particular VaListImpl object.
+    ecx.machine.vararg_cursors.insert(key, cursor);
+
+    interp_ok(())
+}
+
+fn intrinsic_va_arg<'tcx>(
+    ecx: &mut MiriInterpCx<'tcx>,
+    va_list: &OpTy<'tcx>,
+    dest: &MPlaceTy<'tcx>,
+) -> InterpResult<'tcx, ()> {
+    // Identify which VaListImpl this is.
+    let key = va_list_key(ecx, va_list)?;
+
+    // Get and mutate its cursor.
+    //    let cursor = ecx
+    //        .machine
+    //        .vararg_cursors
+    //        .get_mut(&key)
+    //        .ok_or_else(|| err_ub_format!("using an uninitialized va_list in va_arg"))?;
+    let current_frame_idx =
+        ecx.stack().len().checked_sub(1).expect("va_arg called with empty stack");
+
+    use std::collections::hash_map::Entry;
+    let cursor = match ecx.machine.vararg_cursors.entry(key) {
+        Entry::Occupied(entry) => entry.into_mut(),
+        Entry::Vacant(entry) => entry.insert(VarArgCursor { frame: current_frame_idx, next: 0 }),
+    };
+
+    let frame_idx = cursor.frame;
+
+    let idx: usize =
+        cursor.next.try_into().map_err(|_| err_ub_format!("va_list index overflow"))?;
+
+    let frame = &ecx.stack()[frame_idx - 1];
+
+    let mplace: MPlaceTy<'tcx> = frame
+        .varargs
+        .get(idx)
+        .ok_or_else(|| err_ub_format!("va_arg past end of C variadic arguments"))?
+        .clone();
+
+    // Copy the already-typed argument value into the destination.
+    //
+    // `mplace` is an `MPlaceTy<'tcx>`. `.into()` turns it into a `PlaceTy<'tcx>`,
+    // which `copy_op` can handle.
+    ecx.copy_op(&mplace, dest)?;
+
+    // Get and mutate its cursor.
+    let cursor = ecx
+        .machine
+        .vararg_cursors
+        .get_mut(&key)
+        .ok_or_else(|| err_ub_format!("using an uninitialized va_list in va_arg"))?;
+
+    // Advance cursor for next call.
+    cursor.next =
+        cursor.next.checked_add(1).ok_or_else(|| err_ub_format!("va_list index overflow"))?;
 
     interp_ok(())
 }
@@ -221,6 +288,21 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 let [] = check_intrinsic_arg_count(args)?;
                 // normally this would raise a SIGTRAP, which aborts if no debugger is connected
                 throw_machine_stop!(TerminationInfo::Abort(format!("trace/breakpoint trap")))
+            }
+
+            "va_start" => {
+                let [va_list] = check_intrinsic_arg_count(args)?;
+                intrinsic_va_start(this, va_list)?;
+            }
+
+            "va_arg" => {
+                let [va_list] = check_intrinsic_arg_count(args)?;
+                intrinsic_va_arg(this, va_list, dest)?;
+            }
+
+            "va_end" => {
+                let [va_list] = check_intrinsic_arg_count(args)?;
+                intrinsic_va_end(this, va_list)?;
             }
 
             "assert_inhabited" | "assert_zero_valid" | "assert_mem_uninitialized_valid" => {

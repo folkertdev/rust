@@ -492,7 +492,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 callee_fn_abi.args.iter().enumerate()
             };
 
-            for local in body.args_iter() {
+            let mut it = body.args_iter().peekable();
+            while let Some(local) = it.next() {
                 // Construct the destination place for this argument. At this point all
                 // locals are still dead, so we cannot construct a `PlaceTy`.
                 let dest = mir::Place::from(local);
@@ -500,7 +501,10 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 // type, but the result gets cached so this avoids calling the instantiation
                 // query *again* the next time this local is accessed.
                 let ty = self.layout_of_local(self.frame(), local, None)?.ty;
-                if Some(local) == body.spread_arg {
+                if caller_fn_abi.c_variadic && it.peek().is_none() {
+                    // this is the VaList; just skip it.
+                    self.storage_live(local)?;
+                } else if Some(local) == body.spread_arg {
                     // Make the local live once, then fill in the value field by field.
                     self.storage_live(local)?;
                     // Must be a tuple

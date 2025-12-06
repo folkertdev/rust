@@ -487,7 +487,7 @@ pub(crate) struct VarArgCursor {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub(crate) struct VaListKey {
     pub alloc_id: AllocId,
-    pub offset: u64,
+    pub offset: Size,
 }
 
 /// The machine itself.
