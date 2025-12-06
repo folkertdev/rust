@@ -349,7 +349,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
     ) -> InterpResult<'tcx> {
         let _trace = enter_trace_span!(M, step::init_stack_frame, %instance, tracing_separate_thread = Empty);
 
-        let (fixed_count, extra_args) = if caller_fn_abi.c_variadic {
+        let (fixed_count, c_variadic_args) = if caller_fn_abi.c_variadic {
             let sig = self.tcx.fn_sig(instance.def_id()).skip_binder();
             let fixed_count = sig.inputs().skip_binder().len();
 
@@ -363,7 +363,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             (0, ty::List::empty())
         };
 
-        let callee_fn_abi = self.fn_abi_of_instance(instance, extra_args)?;
+        let callee_fn_abi = self.fn_abi_of_instance(instance, c_variadic_args)?;
 
         if callee_fn_abi.c_variadic ^ caller_fn_abi.c_variadic {
             unreachable!("caller and callee disagree on being c-variadic");
@@ -399,37 +399,17 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         // Push the "raw" frame -- this leaves locals uninitialized.
         self.push_stack_frame_raw(instance, body, destination, cont)?;
 
+        // Store the c-variadic arguments in the frame itself.
         if caller_fn_abi.c_variadic {
-            // We treat all arguments beyond `fixed_count` as varargs.
-            // (The caller-location pseudo-arg is handled below and is *not* present
-            // in `args`, so we don't have to adjust for that here.)
-
-            // Sanity: we used the same `fixed_count` when constructing the callee ABI.
-            debug_assert_eq!(
-                caller_fn_abi.args.len(),
-                args.len() + if with_caller_location { 1 } else { 0 }
-            );
-            debug_assert!(caller_fn_abi.c_variadic);
-
             // Slice out the vararg part of the actual arguments.
             let vararg_args = &args[fixed_count..];
             let vararg_abis = &caller_fn_abi.args[fixed_count..];
 
             debug_assert_eq!(vararg_args.len(), vararg_abis.len());
 
-            // Materialize each vararg argument into a fresh stack slot owned by this frame
-            // and remember its place in `frame.varargs`.
             for (fn_arg, abi) in vararg_args.iter().zip(vararg_abis) {
-                // The ABI tells us the argument's type.
-                let ty = abi.layout.ty;
-
-                // We want a *place* in memory to hold the argument value long-term.
-                let layout = self.layout_of(ty)?;
-                let mplace = self.allocate(layout, MemoryKind::Stack)?;
-
-                // Turn the caller's argument into an operand and copy it in.
                 let op = self.copy_fn_arg(fn_arg);
-                // Same helper we use for normal argument passing; this allows some transmutes.
+                let mplace = self.allocate(abi.layout, MemoryKind::Stack)?;
                 self.copy_op_allow_transmute(&op, &mplace)?;
 
                 self.frame_mut().varargs.push(mplace);
@@ -501,10 +481,12 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 // query *again* the next time this local is accessed.
                 let ty = self.layout_of_local(self.frame(), local, None)?.ty;
                 if caller_fn_abi.c_variadic && it.peek().is_none() {
-                    // this is the VaList; just skip it.
+                    // The callee's signature has an additional VaList argument, that the caller
+                    // won't actually pass. We do need to mark it as live, and properly initialize
+                    // it.
                     self.storage_live(local)?;
 
-                    let place = self.eval_place(dest)?; // MPlaceTy<'tcx, _>
+                    let place = self.eval_place(dest)?;
                     let mplace = self.force_allocation(&place)?;
 
                     self.write_bytes_ptr(
@@ -512,6 +494,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                         std::iter::repeat(0u8).take(mplace.layout.size.bytes_usize()),
                     )?;
 
+                    // Create a mapping from VaList value to the variable argument list of the
+                    // callee's frame.
                     M::c_variadic_start(self, &mplace)?;
                 } else if Some(local) == body.spread_arg {
                     // Make the local live once, then fill in the value field by field.
@@ -557,7 +541,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 callee_args_abis.next().is_none(),
                 "mismatch between callee ABI and callee body arguments"
             );
-            if !caller_fn_abi.c_variadic && caller_args.next().is_some() {
+            if !callee_fn_abi.c_variadic && caller_args.next().is_some() {
                 throw_ub_custom!(fluent::const_eval_too_many_caller_args);
             }
             // Don't forget to check the return type!

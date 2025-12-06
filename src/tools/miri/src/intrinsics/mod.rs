@@ -51,14 +51,15 @@ fn intrinsic_va_arg<'tcx>(
     let cursor = ecx
         .machine
         .vararg_cursors
-        .get(&key)
+        .get_mut(&key)
         .ok_or_else(|| err_ub_format!("using an uninitialized va_list in va_arg"))?;
 
     let va_arg_idx: usize =
         cursor.index.try_into().map_err(|_| err_ub_format!("va_list index overflow"))?;
+    cursor.index = cursor.index.strict_add(1);
 
     let frame_idx = cursor.frame_idx;
-    let frame = &ecx.stack()[frame_idx];
+    let frame = &ecx.machine.threads.active_thread_stack()[frame_idx];
 
     // NOTE: the clone is needed to satisfy the borrow checker.
     let Some(mplace) = frame.varargs.get(va_arg_idx).cloned() else {
@@ -67,10 +68,6 @@ fn intrinsic_va_arg<'tcx>(
 
     // A bitcast is allowed, turning e.g. an argument passed as i32 into a u32.
     ecx.copy_op_allow_transmute(&mplace, dest)?;
-
-    // Advance cursor for next call.
-    let cursor = ecx.machine.vararg_cursors.get_mut(&key).unwrap();
-    cursor.index = cursor.index.strict_add(1);
 
     interp_ok(())
 }

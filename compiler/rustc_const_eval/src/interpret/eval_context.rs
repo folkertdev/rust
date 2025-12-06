@@ -272,7 +272,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         self.stack().last().map_or(self.tcx.span, |f| f.current_span())
     }
 
-    pub fn stack(&self) -> &[Frame<'tcx, M::Provenance, M::FrameExtra>] {
+    pub(crate) fn stack(&self) -> &[Frame<'tcx, M::Provenance, M::FrameExtra>] {
         M::stack(self)
     }
 
