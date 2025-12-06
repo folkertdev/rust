@@ -17,6 +17,44 @@ use self::math::EvalContextExt as _;
 use self::simd::EvalContextExt as _;
 use crate::*;
 
+use crate::machine::VaListKey;
+use rustc_const_eval::interpret::Pointer;
+
+/// Compute a stable key for a particular `VaListImpl` object in memory.
+///
+/// `ap_ref` is the *argument* to the intrinsic, i.e. `&mut VaListImpl<'_>`.
+fn va_list_key<'tcx>(
+    ecx: &MiriInterpCx<'tcx>,
+    ap_ref: &OpTy<'tcx>,
+) -> InterpResult<'tcx, VaListKey> {
+    // `ap_ref` has type `&mut VaListImpl<'_>` (or `&VaListImpl<'_>`), so its
+    // value is a pointer to the `VaListImpl` object.
+    let ptr: Pointer<_> = ecx.read_pointer(ap_ref)?;
+
+    // Convert the pointer to (AllocId, offset) using Miri's ptr_get_alloc helper.
+    // `size` argument is 0 here since we are just looking up the allocation.
+    let (alloc_id, offset) = match ecx.ptr_get_alloc(ptr, 0) {
+        Some((alloc_id, offset)) => (alloc_id, offset),
+        None => {
+            // Dangling or invalid pointer -> UB.
+            throw_ub_format!("va_list pointer does not point to a valid allocation");
+        }
+    };
+
+    interp_ok(VaListKey { alloc_id, offset })
+}
+
+fn intrinsic_va_end<'tcx>(
+    ecx: &mut MiriInterpCx<'tcx>,
+    args: &[OpTy<'tcx>],
+) -> InterpResult<'tcx, ()> {
+    // `args[0]` is the `&mut VaListImpl`.
+    let key = va_list_key(ecx, &args[0])?;
+    ecx.machine.vararg_cursors.remove(&key);
+
+    interp_ok(())
+}
+
 /// Check that the number of args is what we expect.
 fn check_intrinsic_arg_count<'a, 'tcx, const N: usize>(
     args: &'a [OpTy<'tcx>],

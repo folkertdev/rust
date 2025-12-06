@@ -16,9 +16,9 @@ use tracing::field::Empty;
 use tracing::{info_span, instrument, trace};
 
 use super::{
-    AllocId, CtfeProvenance, Immediate, InterpCx, InterpResult, Machine, MemPlace, MemPlaceMeta,
-    MemoryKind, Operand, PlaceTy, Pointer, Provenance, ReturnAction, Scalar, from_known_layout,
-    interp_ok, throw_ub, throw_unsup,
+    AllocId, CtfeProvenance, Immediate, InterpCx, InterpResult, MPlaceTy, Machine, MemPlace,
+    MemPlaceMeta, MemoryKind, Operand, PlaceTy, Pointer, Provenance, ReturnAction, Scalar,
+    from_known_layout, interp_ok, throw_ub, throw_unsup,
 };
 use crate::{enter_trace_span, errors};
 
@@ -90,6 +90,9 @@ pub struct Frame<'tcx, Prov: Provenance = CtfeProvenance, Extra = ()> {
     ///
     /// Do *not* access this directly; always go through the machine hook!
     pub locals: IndexVec<mir::Local, LocalState<'tcx, Prov>>,
+
+    /// places of the C-variadic arguments
+    pub varargs: Vec<MPlaceTy<'tcx, Prov>>,
 
     /// The span of the `tracing` crate is stored here.
     /// When the guard is dropped, the span is exited. This gives us
@@ -260,6 +263,7 @@ impl<'tcx, Prov: Provenance> Frame<'tcx, Prov> {
             return_place: self.return_place,
             locals: self.locals,
             loc: self.loc,
+            varargs: self.varargs,
             extra,
             tracing_span: self.tracing_span,
         }
@@ -378,6 +382,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             return_place: return_place.clone(),
             locals,
             instance,
+            varargs: Vec::new(),
             tracing_span: SpanGuard::new(),
             extra: (),
         };
@@ -452,6 +457,11 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             // We need to take the locals out, since we need to mutate while iterating.
             for local in &frame.locals {
                 self.deallocate_local(local.value)?;
+            }
+
+            // Deallocate C-variadic arguments.
+            for mplace in &frame.varargs {
+                self.deallocate_vararg(mplace)?;
             }
 
             // Call the machine hook, which determines the next steps.
@@ -596,6 +606,22 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             );
             self.deallocate_ptr(ptr, None, MemoryKind::Stack)?;
         };
+        interp_ok(())
+    }
+
+    fn deallocate_vararg(&mut self, vararg: &MPlaceTy<'tcx, M::Provenance>) -> InterpResult<'tcx> {
+        let ptr = vararg.ptr();
+
+        // All locals have a backing allocation, even if the allocation is empty
+        // due to the local having ZST type. Hence we can `unwrap`.
+        trace!(
+            "deallocating vararg {:?}: {:?}",
+            vararg,
+            // Locals always have a `alloc_id` (they are never the result of a int2ptr).
+            self.dump_alloc(ptr.provenance.unwrap().get_alloc_id().unwrap())
+        );
+        self.deallocate_ptr(ptr, None, MemoryKind::Stack)?;
+
         interp_ok(())
     }
 
