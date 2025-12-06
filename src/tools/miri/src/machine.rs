@@ -479,16 +479,15 @@ impl<'tcx> PrimitiveLayouts<'tcx> {
 
 /// A cursor into a Frame's variable argument list.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct VarArgCursor {
-    pub frame: usize, // index into InterpCx.stack
-    pub next: u32,    // number of already-consumed varargs
+pub(crate) struct VaListCursor {
+    pub frame_idx: usize,
+    pub index: u32,
 }
 
+/// A unique identifier for a VaList value. This can be mapped to an index into a frame's variable
+/// argument list.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub(crate) struct VaListKey {
-    pub alloc_id: AllocId,
-    pub offset: Size,
-}
+pub(crate) struct VaListKey(pub u64);
 
 /// The machine itself.
 ///
@@ -667,8 +666,12 @@ pub struct MiriMachine<'tcx> {
     /// Whether Miri artifically introduces short reads/writes on file descriptors.
     pub short_fd_operations: bool,
 
-    /// The `VaList` values that are currently live.
-    pub(crate) vararg_cursors: FxHashMap<VaListKey, VarArgCursor>,
+    /// The `VaList` values that are currently live, pointing to their variable argument list.
+    /// Because a `VaList` can be passed by-value and duplicated with `va_copy`, there can be
+    /// different `VaList` values pointing to different positions in the underlying variable
+    /// argument list.
+    pub(crate) vararg_cursors: FxHashMap<VaListKey, VaListCursor>,
+    pub(crate) next_va_list_id: u64,
 }
 
 impl<'tcx> MiriMachine<'tcx> {
@@ -830,6 +833,7 @@ impl<'tcx> MiriMachine<'tcx> {
             float_rounding_error: config.float_rounding_error,
             short_fd_operations: config.short_fd_operations,
             vararg_cursors: FxHashMap::default(),
+            next_va_list_id: 0,
         }
     }
 
@@ -1061,6 +1065,7 @@ impl VisitProvenance for MiriMachine<'_> {
             float_rounding_error: _,
             short_fd_operations: _,
             vararg_cursors: _,
+            next_va_list_id: _,
         } = self;
 
         threads.visit_provenance(visit);
@@ -1679,6 +1684,29 @@ impl<'tcx> Machine<'tcx> for MiriMachine<'tcx> {
         if ecx.machine.borrow_tracker.is_some() {
             ecx.retag_place_contents(kind, place)?;
         }
+        interp_ok(())
+    }
+
+    fn c_variadic_start(
+        ecx: &mut InterpCx<'tcx, Self>,
+        place: &MPlaceTy<'tcx>,
+    ) -> InterpResult<'tcx> {
+        // Generate a new ID for the VaList that is automatically introduced.
+        let id = ecx.machine.next_va_list_id;
+        ecx.machine.next_va_list_id = ecx.machine.next_va_list_id.strict_add(1);
+
+        // Write that ID into the VaList value itself, so that a call to va_arg can read it and
+        // know which variable argument list to look at.
+        let usize_layout = ecx.layout_of(ecx.tcx.types.usize)?;
+        let scalar = Scalar::from_u64(id);
+        let tagged_mplace = place.offset(Size::ZERO, usize_layout, ecx)?;
+        ecx.write_scalar(scalar, &tagged_mplace)?;
+
+        // Initial cursor: before first vararg in this frame.
+        let cursor = VaListCursor { frame_idx: ecx.frame_idx(), index: 0 };
+
+        ecx.machine.vararg_cursors.insert(VaListKey(id), cursor);
+
         interp_ok(())
     }
 

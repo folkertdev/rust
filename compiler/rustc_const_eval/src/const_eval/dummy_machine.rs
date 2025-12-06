@@ -208,4 +208,11 @@ impl<'tcx> interpret::Machine<'tcx> for DummyMachine {
         &self,
     ) -> <Self::Bytes as rustc_middle::mir::interpret::AllocBytes>::AllocParams {
     }
+
+    fn c_variadic_start(
+        _ecx: &mut InterpCx<'tcx, Self>,
+        _mplace: &interpret::MPlaceTy<'tcx, Self::Provenance>,
+    ) -> InterpResult<'tcx> {
+        todo!()
+    }
 }

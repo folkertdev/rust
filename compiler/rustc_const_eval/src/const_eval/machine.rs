@@ -881,6 +881,13 @@ impl<'tcx> interpret::Machine<'tcx> for CompileTimeMachine<'tcx> {
 
     fn get_default_alloc_params(&self) -> <Self::Bytes as mir::interpret::AllocBytes>::AllocParams {
     }
+
+    fn c_variadic_start(
+        _ecx: &mut InterpCx<'tcx, Self>,
+        _mplace: &interpret::MPlaceTy<'tcx, Self::Provenance>,
+    ) -> InterpResult<'tcx> {
+        todo!()
+    }
 }
 
 // Please do not add any code below the above `Machine` trait impl. I (oli-obk) plan more cleanups

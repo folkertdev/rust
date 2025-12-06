@@ -18,52 +18,25 @@ use self::simd::EvalContextExt as _;
 use crate::*;
 
 use crate::machine::VaListKey;
-use crate::machine::VarArgCursor;
 use rustc_const_eval::interpret::Pointer;
 
 /// Compute a stable key for a particular `VaListImpl` object in memory.
 ///
-/// `ap_ref` is the *argument* to the intrinsic, i.e. `&mut VaListImpl<'_>`.
+/// `ap_ref` is the a value of type `&mut VaListImpl<'_>`.
 fn va_list_key<'tcx>(
     ecx: &MiriInterpCx<'tcx>,
     ap_ref: &OpTy<'tcx>,
 ) -> InterpResult<'tcx, VaListKey> {
-    // `ap_ref` is a reference, so its *value* is a pointer to the `VaListImpl` object.
-    let ptr: Pointer<_> = ecx.read_pointer(ap_ref)?;
+    let va_list_ty =
+        ap_ref.layout().ty.builtin_deref(true).expect("va_list argument should be a reference");
 
-    let (alloc_id, offset, _prov) = ecx.ptr_try_get_alloc_id(ptr, 0).unwrap();
+    let base_layout = ecx.layout_of(va_list_ty)?;
+    let tag_layout = ecx.layout_of(ecx.tcx.types.usize)?;
 
-    interp_ok(VaListKey { alloc_id, offset })
-}
+    let tag_scalar = ecx.deref_pointer_and_read(ap_ref, 0, base_layout, tag_layout)?;
+    let id = tag_scalar.to_u64()?;
 
-fn intrinsic_va_end<'tcx>(
-    ecx: &mut MiriInterpCx<'tcx>,
-    va_list: &OpTy<'tcx>,
-) -> InterpResult<'tcx, ()> {
-    // `args[0]` is the `&mut VaListImpl`.
-    let key = va_list_key(ecx, va_list)?;
-    ecx.machine.vararg_cursors.remove(&key);
-
-    interp_ok(())
-}
-
-fn intrinsic_va_start<'tcx>(
-    ecx: &mut MiriInterpCx<'tcx>,
-    va_list: &OpTy<'tcx>,
-) -> InterpResult<'tcx, ()> {
-    // `va_list` is `&mut VaListImpl<'_>`.
-    let key = va_list_key(ecx, va_list)?;
-
-    // Current frame is the one that owns the `...` arguments.
-    let frame = ecx.frame_idx();
-
-    // Start cursor at the first vararg.
-    let cursor = VarArgCursor { frame, next: 0 };
-
-    // Record (or overwrite) the cursor for this particular VaListImpl object.
-    ecx.machine.vararg_cursors.insert(key, cursor);
-
-    interp_ok(())
+    interp_ok(VaListKey(id))
 }
 
 fn intrinsic_va_arg<'tcx>(
@@ -71,51 +44,33 @@ fn intrinsic_va_arg<'tcx>(
     va_list: &OpTy<'tcx>,
     dest: &MPlaceTy<'tcx>,
 ) -> InterpResult<'tcx, ()> {
-    // Identify which VaListImpl this is.
+    // Find which variable argument list we're reading from, and what the current position is.
     let key = va_list_key(ecx, va_list)?;
-
-    // We are in the `VaList::arg` function, so the `VaList` belongs to the function right above
-    // us.
-    let current_frame_idx =
-        ecx.stack().len().checked_sub(1).expect("va_arg called with empty stack");
-
-    use std::collections::hash_map::Entry;
-    let cursor = match ecx.machine.vararg_cursors.entry(key) {
-        Entry::Occupied(entry) => entry.into_mut(),
-        Entry::Vacant(entry) => entry.insert(VarArgCursor { frame: current_frame_idx, next: 0 }),
-    };
-
-    let frame_idx = cursor.frame;
-
-    let idx: usize =
-        cursor.next.try_into().map_err(|_| err_ub_format!("va_list index overflow"))?;
-
-    let frame = &ecx.stack()[frame_idx - 1];
-
-    let Some(mplace) = frame.varargs.get(idx).cloned() else {
-        dbg!(&ecx.stack()[frame_idx - 1].instance());
-        dbg!(&ecx.stack()[frame_idx - 1].varargs);
-        dbg!(&ecx.stack()[frame_idx].instance());
-        dbg!(&ecx.stack()[frame_idx].varargs);
-        return Err(err_ub_format!("va_arg past end of C variadic arguments")).into();
-    };
-
-    // Copy the already-typed argument value into the destination.
-    //
-    // `mplace` is an `MPlaceTy<'tcx>`. `.into()` turns it into a `PlaceTy<'tcx>`,
-    // which `copy_op` can handle.
-    ecx.copy_op(&mplace, dest)?;
 
     // Get and mutate its cursor.
     let cursor = ecx
         .machine
         .vararg_cursors
-        .get_mut(&key)
+        .get(&key)
         .ok_or_else(|| err_ub_format!("using an uninitialized va_list in va_arg"))?;
 
+    let va_arg_idx: usize =
+        cursor.index.try_into().map_err(|_| err_ub_format!("va_list index overflow"))?;
+
+    let frame_idx = cursor.frame_idx;
+    let frame = &ecx.stack()[frame_idx];
+
+    // NOTE: the clone is needed to satisfy the borrow checker.
+    let Some(mplace) = frame.varargs.get(va_arg_idx).cloned() else {
+        return Err(err_ub_format!("va_arg past end of C variadic arguments")).into();
+    };
+
+    // A bitcast is allowed, turning e.g. an argument passed as i32 into a u32.
+    ecx.copy_op_allow_transmute(&mplace, dest)?;
+
     // Advance cursor for next call.
-    cursor.next =
-        cursor.next.checked_add(1).ok_or_else(|| err_ub_format!("va_list index overflow"))?;
+    let cursor = ecx.machine.vararg_cursors.get_mut(&key).unwrap();
+    cursor.index = cursor.index.strict_add(1);
 
     interp_ok(())
 }
@@ -288,19 +243,9 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 throw_machine_stop!(TerminationInfo::Abort(format!("trace/breakpoint trap")))
             }
 
-            "va_start" => {
-                let [va_list] = check_intrinsic_arg_count(args)?;
-                intrinsic_va_start(this, va_list)?;
-            }
-
             "va_arg" => {
                 let [va_list] = check_intrinsic_arg_count(args)?;
                 intrinsic_va_arg(this, va_list, dest)?;
-            }
-
-            "va_end" => {
-                let [va_list] = check_intrinsic_arg_count(args)?;
-                intrinsic_va_end(this, va_list)?;
             }
 
             "assert_inhabited" | "assert_zero_valid" | "assert_mem_uninitialized_valid" => {

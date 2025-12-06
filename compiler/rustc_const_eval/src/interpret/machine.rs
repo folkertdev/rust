@@ -515,6 +515,13 @@ pub trait Machine<'tcx>: Sized {
         ecx.write_uninit(mplace)
     }
 
+    /// An opportunity to associate the automatically inserted `VaList` value with the current
+    /// `Frame`.
+    fn c_variadic_start(
+        ecx: &mut InterpCx<'tcx, Self>,
+        mplace: &MPlaceTy<'tcx, Self::Provenance>,
+    ) -> InterpResult<'tcx>;
+
     /// Called immediately before a new stack frame gets pushed.
     fn init_frame(
         ecx: &mut InterpCx<'tcx, Self>,

@@ -511,6 +511,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                         mplace.ptr(),
                         std::iter::repeat(0u8).take(mplace.layout.size.bytes_usize()),
                     )?;
+
+                    M::c_variadic_start(self, &mplace)?;
                 } else if Some(local) == body.spread_arg {
                     // Make the local live once, then fill in the value field by field.
                     self.storage_live(local)?;

@@ -21,6 +21,15 @@ fn echo() {
     assert_eq!(unsafe { variadic(3, 2, 1) }, 3);
 }
 
+fn cast() {
+    unsafe extern "C" fn variadic(mut ap: ...) -> u32 {
+        ap.arg()
+    }
+
+    assert_eq!(unsafe { variadic(1i32) }, 1u32);
+    assert_eq!(unsafe { variadic(3i32, 2, 1) }, 3u32);
+}
+
 fn forward_by_val() {
     unsafe fn helper(mut ap: VaList) -> i32 {
         ap.arg()
@@ -50,6 +59,7 @@ fn forward_by_ref() {
 fn main() {
     ignores_arguments();
     echo();
+    cast();
     forward_by_val();
     forward_by_ref();
 }
