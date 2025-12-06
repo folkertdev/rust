@@ -74,12 +74,8 @@ fn intrinsic_va_arg<'tcx>(
     // Identify which VaListImpl this is.
     let key = va_list_key(ecx, va_list)?;
 
-    // Get and mutate its cursor.
-    //    let cursor = ecx
-    //        .machine
-    //        .vararg_cursors
-    //        .get_mut(&key)
-    //        .ok_or_else(|| err_ub_format!("using an uninitialized va_list in va_arg"))?;
+    // We are in the `VaList::arg` function, so the `VaList` belongs to the function right above
+    // us.
     let current_frame_idx =
         ecx.stack().len().checked_sub(1).expect("va_arg called with empty stack");
 
@@ -96,11 +92,13 @@ fn intrinsic_va_arg<'tcx>(
 
     let frame = &ecx.stack()[frame_idx - 1];
 
-    let mplace: MPlaceTy<'tcx> = frame
-        .varargs
-        .get(idx)
-        .ok_or_else(|| err_ub_format!("va_arg past end of C variadic arguments"))?
-        .clone();
+    let Some(mplace) = frame.varargs.get(idx).cloned() else {
+        dbg!(&ecx.stack()[frame_idx - 1].instance());
+        dbg!(&ecx.stack()[frame_idx - 1].varargs);
+        dbg!(&ecx.stack()[frame_idx].instance());
+        dbg!(&ecx.stack()[frame_idx].varargs);
+        return Err(err_ub_format!("va_arg past end of C variadic arguments")).into();
+    };
 
     // Copy the already-typed argument value into the destination.
     //

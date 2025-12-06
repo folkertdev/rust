@@ -19,8 +19,7 @@ use super::{
     Projectable, Provenance, ReturnAction, ReturnContinuation, Scalar, StackPopInfo, interp_ok,
     throw_ub, throw_ub_custom,
 };
-use crate::interpret::EnteredTraceSpan;
-use crate::interpret::MemoryKind;
+use crate::interpret::{EnteredTraceSpan, MemoryKind};
 use crate::{enter_trace_span, fluent_generated as fluent};
 
 /// An argument passed to a function.
@@ -504,6 +503,14 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 if caller_fn_abi.c_variadic && it.peek().is_none() {
                     // this is the VaList; just skip it.
                     self.storage_live(local)?;
+
+                    let place = self.eval_place(dest)?; // MPlaceTy<'tcx, _>
+                    let mplace = self.force_allocation(&place)?;
+
+                    self.write_bytes_ptr(
+                        mplace.ptr(),
+                        std::iter::repeat(0u8).take(mplace.layout.size.bytes_usize()),
+                    )?;
                 } else if Some(local) == body.spread_arg {
                     // Make the local live once, then fill in the value field by field.
                     self.storage_live(local)?;
