@@ -459,6 +459,11 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 self.deallocate_local(local.value)?;
             }
 
+            // Deallocate any c-variadic arguments. This takes the place of `va_end`.
+            for mplace in &frame.varargs {
+                self.deallocate_vararg(mplace)?;
+            }
+
             // Call the machine hook, which determines the next steps.
             let return_action = M::after_stack_pop(self, frame, unwinding)?;
             assert_ne!(return_action, ReturnAction::NoCleanup);
@@ -601,6 +606,22 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             );
             self.deallocate_ptr(ptr, None, MemoryKind::Stack)?;
         };
+        interp_ok(())
+    }
+
+    fn deallocate_vararg(&mut self, vararg: &MPlaceTy<'tcx, M::Provenance>) -> InterpResult<'tcx> {
+        let ptr = vararg.ptr();
+
+        // FIXME: is the `unwrap` valid here?
+        trace!(
+            "deallocating vararg {:?}: {:?}",
+            vararg,
+            // FIXME: what do we do with this comment?
+            // Locals always have a `alloc_id` (they are never the result of a int2ptr).
+            self.dump_alloc(ptr.provenance.unwrap().get_alloc_id().unwrap())
+        );
+        self.deallocate_ptr(ptr, None, MemoryKind::Stack)?;
+
         interp_ok(())
     }
 
