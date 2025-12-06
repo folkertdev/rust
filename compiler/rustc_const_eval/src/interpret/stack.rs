@@ -16,9 +16,9 @@ use tracing::field::Empty;
 use tracing::{info_span, instrument, trace};
 
 use super::{
-    AllocId, CtfeProvenance, Immediate, InterpCx, InterpResult, Machine, MemPlace, MemPlaceMeta,
-    MemoryKind, Operand, PlaceTy, Pointer, Provenance, ReturnAction, Scalar, from_known_layout,
-    interp_ok, throw_ub, throw_unsup,
+    AllocId, CtfeProvenance, Immediate, InterpCx, InterpResult, MPlaceTy, Machine, MemPlace,
+    MemPlaceMeta, MemoryKind, Operand, PlaceTy, Pointer, Provenance, ReturnAction, Scalar,
+    from_known_layout, interp_ok, throw_ub, throw_unsup,
 };
 use crate::{enter_trace_span, errors};
 
@@ -90,6 +90,9 @@ pub struct Frame<'tcx, Prov: Provenance = CtfeProvenance, Extra = ()> {
     ///
     /// Do *not* access this directly; always go through the machine hook!
     pub locals: IndexVec<mir::Local, LocalState<'tcx, Prov>>,
+
+    /// places of the C-variadic arguments.
+    varargs: Vec<MPlaceTy<'tcx, Prov>>,
 
     /// The span of the `tracing` crate is stored here.
     /// When the guard is dropped, the span is exited. This gives us
@@ -259,6 +262,7 @@ impl<'tcx, Prov: Provenance> Frame<'tcx, Prov> {
             return_cont: self.return_cont,
             return_place: self.return_place,
             locals: self.locals,
+            varargs: self.varargs,
             loc: self.loc,
             extra,
             tracing_span: self.tracing_span,
@@ -377,6 +381,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             return_cont,
             return_place: return_place.clone(),
             locals,
+            varargs: Vec::new(),
             instance,
             tracing_span: SpanGuard::new(),
             extra: (),
