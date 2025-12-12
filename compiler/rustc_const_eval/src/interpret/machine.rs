@@ -112,6 +112,9 @@ pub trait Machine<'tcx>: Sized {
     /// that can later be called to execute the right thing.
     type ExtraFnVal: Debug + Copy;
 
+    /// Extra data stored for every VaList.
+    type VaListExtra: Debug + Copy;
+
     /// Extra data stored in every call frame.
     type FrameExtra;
 
@@ -514,6 +517,19 @@ pub trait Machine<'tcx>: Sized {
         // Conveniently this also ensures that the place actually points to suitable memory.
         ecx.write_uninit(mplace)
     }
+
+    /// Initialize a VaList
+    fn va_list_start(
+        ecx: &mut InterpCx<'tcx, Self>,
+        frame: &Frame<'tcx, Self::Provenance>,
+    ) -> InterpResult<'tcx, AllodId>;
+
+    /// Get the next argument from a VaList
+    fn va_list_arg(
+        ecx: &mut InterpCx<'tcx, Self>,
+        alloc_id: AllocId,
+        mplace: &MPlaceTy<'tcx, Self::Provenance>,
+    ) -> InterpResult<'tcx>;
 
     /// Called immediately before a new stack frame gets pushed.
     fn init_frame(

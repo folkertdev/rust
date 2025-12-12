@@ -67,6 +67,8 @@ pub enum AllocKind {
     LiveData,
     /// A function allocation (that fn ptrs point to).
     Function,
+    /// A variable argument list allocation (used by c-variadic functions).
+    VaList,
     /// A vtable allocation.
     VTable,
     /// A TypeId allocation.
@@ -108,6 +110,15 @@ impl<'tcx, Other> FnVal<'tcx, Other> {
     }
 }
 
+pub struct VaListMeta {
+    /// The thread on which this VaList was created.
+    pub thread_id: ThreadId,
+    /// Index of the stack frame that this VaList belongs to.
+    pub frame_idx: usize,
+    /// Index of the next argument to read.
+    pub arg_idx: usize,
+}
+
 // `Memory` has to depend on the `Machine` because some of its operations
 // (e.g., `get`) call a `Machine` hook.
 pub struct Memory<'tcx, M: Machine<'tcx>> {
@@ -125,6 +136,8 @@ pub struct Memory<'tcx, M: Machine<'tcx>> {
 
     /// Map for "extra" function pointers.
     extra_fn_ptr_map: FxIndexMap<AllocId, M::ExtraFnVal>,
+
+    va_lists_map: FxIndexMap<AllocId, VaListMeta>,
 
     /// To be able to compare pointers with null, and to check alignment for accesses
     /// to ZSTs (where pointers may dangle), we keep track of the size even for allocations
@@ -161,6 +174,7 @@ impl<'tcx, M: Machine<'tcx>> Memory<'tcx, M> {
         Memory {
             alloc_map: M::MemoryMap::default(),
             extra_fn_ptr_map: FxIndexMap::default(),
+            va_lists_map: FxIndexMap::default(),
             dead_alloc_map: FxIndexMap::default(),
             validation_in_progress: Cell::new(false),
         }

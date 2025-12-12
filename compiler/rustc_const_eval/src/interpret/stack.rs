@@ -92,7 +92,7 @@ pub struct Frame<'tcx, Prov: Provenance = CtfeProvenance, Extra = ()> {
     pub locals: IndexVec<mir::Local, LocalState<'tcx, Prov>>,
 
     /// places of the C-variadic arguments.
-    varargs: Vec<MPlaceTy<'tcx, Prov>>,
+    pub(super) varargs: Vec<MPlaceTy<'tcx, Prov>>,
 
     /// The span of the `tracing` crate is stored here.
     /// When the guard is dropped, the span is exited. This gives us
