@@ -2,6 +2,7 @@
 //! and returning the return value to the caller.
 use std::assert_matches::assert_matches;
 use std::borrow::Cow;
+use std::rc::Rc;
 
 use either::{Left, Right};
 use rustc_abi::{self as abi, ExternAbi, FieldIdx, Integer, VariantIdx};
@@ -15,9 +16,9 @@ use tracing::field::Empty;
 use tracing::{info, instrument, trace};
 
 use super::{
-    CtfeProvenance, FnVal, ImmTy, InterpCx, InterpResult, MPlaceTy, Machine, OpTy, PlaceTy,
-    Projectable, Provenance, ReturnAction, ReturnContinuation, Scalar, StackPopInfo, interp_ok,
-    throw_ub, throw_ub_custom, throw_unsup_format,
+    CtfeProvenance, FnVal, ImmTy, InterpCx, InterpResult, MPlaceTy, Machine, MemoryKind, OpTy,
+    PlaceTy, Projectable, Provenance, ReturnAction, ReturnContinuation, Scalar, StackPopInfo,
+    interp_ok, throw_ub, throw_ub_custom,
 };
 use crate::interpret::EnteredTraceSpan;
 use crate::{enter_trace_span, fluent_generated as fluent};
@@ -349,12 +350,23 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
     ) -> InterpResult<'tcx> {
         let _trace = enter_trace_span!(M, step::init_stack_frame, %instance, tracing_separate_thread = Empty);
 
-        // Compute callee information.
-        // FIXME: for variadic support, do we have to somehow determine callee's extra_args?
-        let callee_fn_abi = self.fn_abi_of_instance(instance, ty::List::empty())?;
+        let (fixed_count, c_variadic_args) = if caller_fn_abi.c_variadic {
+            let sig = self.tcx.fn_sig(instance.def_id()).skip_binder();
+            let fixed_count = sig.inputs().skip_binder().len();
+            assert!(caller_fn_abi.args.len() >= fixed_count);
 
-        if callee_fn_abi.c_variadic || caller_fn_abi.c_variadic {
-            throw_unsup_format!("calling a c-variadic function is not supported");
+            let extra_tys: Vec<Ty<'tcx>> =
+                caller_fn_abi.args[fixed_count..].iter().map(|arg_abi| arg_abi.layout.ty).collect();
+
+            (fixed_count, self.tcx.mk_type_list(&extra_tys))
+        } else {
+            (0, ty::List::empty())
+        };
+
+        let callee_fn_abi = self.fn_abi_of_instance(instance, c_variadic_args)?;
+
+        if callee_fn_abi.c_variadic ^ caller_fn_abi.c_variadic {
+            unreachable!("caller and callee disagree on being c-variadic");
         }
 
         if caller_fn_abi.conv != callee_fn_abi.conv {
@@ -386,6 +398,35 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 
         // Push the "raw" frame -- this leaves locals uninitialized.
         self.push_stack_frame_raw(instance, body, destination, cont)?;
+
+        // Store the c-variadic arguments in the frame itself.
+        let c_variadic_arguments = if caller_fn_abi.c_variadic {
+            // Slice out the vararg part of the actual arguments.
+            let vararg_args = &args[fixed_count..];
+            let vararg_abis = &caller_fn_abi.args[fixed_count..];
+
+            debug_assert_eq!(vararg_args.len(), vararg_abis.len());
+
+            let mut varargs = Vec::with_capacity(vararg_args.len());
+            for (fn_arg, abi) in vararg_args.iter().zip(vararg_abis) {
+                let op = self.copy_fn_arg(fn_arg);
+                let mplace = self.allocate(abi.layout, MemoryKind::Stack)?;
+                self.copy_op(&op, &mplace)?;
+
+                varargs.push(mplace);
+            }
+            let varargs: Rc<[_]> = varargs.into();
+
+            let data = crate::interpret::memory::VaListData {
+                arguments: Rc::downgrade(&varargs),
+                next_index: 0,
+            };
+
+            self.memory.va_lists_map.insert(alloc_id, data);
+
+            self.frame_mut().varargs = varargs.clone();
+        } else {
+        };
 
         // If an error is raised here, pop the frame again to get an accurate backtrace.
         // To this end, we wrap it all in a `try` block.

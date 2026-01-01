@@ -1,6 +1,7 @@
 //! Manages the low-level pushing and popping of stack frames and the (de)allocation of local variables.
 //! For handling of argument passing and return values, see the `call` module.
 use std::cell::Cell;
+use std::rc::Rc;
 use std::{fmt, mem};
 
 use either::{Either, Left, Right};
@@ -91,8 +92,8 @@ pub struct Frame<'tcx, Prov: Provenance = CtfeProvenance, Extra = ()> {
     /// Do *not* access this directly; always go through the machine hook!
     pub locals: IndexVec<mir::Local, LocalState<'tcx, Prov>>,
 
-    /// places of the C-variadic arguments.
-    varargs: Vec<MPlaceTy<'tcx, Prov>>,
+    /// Places of the C-variadic arguments.
+    pub(super) varargs: Rc<[MPlaceTy<'tcx, Prov>]>,
 
     /// The span of the `tracing` crate is stored here.
     /// When the guard is dropped, the span is exited. This gives us
@@ -381,7 +382,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             return_cont,
             return_place: return_place.clone(),
             locals,
-            varargs: Vec::new(),
+            varargs: Rc::default(),
             instance,
             tracing_span: SpanGuard::new(),
             extra: (),
@@ -460,7 +461,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             }
 
             // Deallocate any c-variadic arguments. This takes the place of `va_end`.
-            for mplace in &frame.varargs {
+            for mplace in frame.varargs.iter() {
                 self.deallocate_vararg(mplace)?;
             }
 

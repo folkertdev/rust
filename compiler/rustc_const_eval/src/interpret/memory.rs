@@ -10,6 +10,7 @@ use std::assert_matches::assert_matches;
 use std::borrow::{Borrow, Cow};
 use std::cell::Cell;
 use std::collections::VecDeque;
+use std::rc::Weak;
 use std::{fmt, ptr};
 
 use rustc_abi::{Align, HasDataLayout, Size};
@@ -22,8 +23,8 @@ use tracing::{debug, instrument, trace};
 
 use super::{
     AllocBytes, AllocId, AllocInit, AllocMap, AllocRange, Allocation, CheckAlignMsg,
-    CheckInAllocMsg, CtfeProvenance, GlobalAlloc, InterpCx, InterpResult, Machine, MayLeak,
-    Misalignment, Pointer, PointerArithmetic, Provenance, Scalar, alloc_range, err_ub,
+    CheckInAllocMsg, CtfeProvenance, GlobalAlloc, InterpCx, InterpResult, MPlaceTy, Machine,
+    MayLeak, Misalignment, Pointer, PointerArithmetic, Provenance, Scalar, alloc_range, err_ub,
     err_ub_custom, interp_ok, throw_ub, throw_ub_custom, throw_unsup, throw_unsup_format,
 };
 use crate::const_eval::ConstEvalErrKind;
@@ -67,6 +68,8 @@ pub enum AllocKind {
     LiveData,
     /// A function allocation (that fn ptrs point to).
     Function,
+    /// A variable argument list allocation (used by c-variadic functions).
+    VaList,
     /// A vtable allocation.
     VTable,
     /// A TypeId allocation.
@@ -108,6 +111,14 @@ impl<'tcx, Other> FnVal<'tcx, Other> {
     }
 }
 
+pub(super) struct VaListData<'tcx, M: Machine<'tcx>> {
+    /// Places of the C-variadic arguments.
+    pub arguments: Weak<[MPlaceTy<'tcx, M::Provenance>]>,
+
+    /// Index of the next argument that `va_arg` will read.
+    pub next_index: usize,
+}
+
 // `Memory` has to depend on the `Machine` because some of its operations
 // (e.g., `get`) call a `Machine` hook.
 pub struct Memory<'tcx, M: Machine<'tcx>> {
@@ -125,6 +136,8 @@ pub struct Memory<'tcx, M: Machine<'tcx>> {
 
     /// Map for "extra" function pointers.
     extra_fn_ptr_map: FxIndexMap<AllocId, M::ExtraFnVal>,
+
+    pub(super) va_lists_map: FxIndexMap<AllocId, VaListData<'tcx, M>>,
 
     /// To be able to compare pointers with null, and to check alignment for accesses
     /// to ZSTs (where pointers may dangle), we keep track of the size even for allocations
@@ -161,6 +174,7 @@ impl<'tcx, M: Machine<'tcx>> Memory<'tcx, M> {
         Memory {
             alloc_map: M::MemoryMap::default(),
             extra_fn_ptr_map: FxIndexMap::default(),
+            va_lists_map: FxIndexMap::default(),
             dead_alloc_map: FxIndexMap::default(),
             validation_in_progress: Cell::new(false),
         }
