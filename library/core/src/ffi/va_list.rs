@@ -247,7 +247,8 @@ impl<'f> VaList<'f> {
     ///
     /// [valid]: https://doc.rust-lang.org/nightly/nomicon/what-unsafe-does.html
     #[inline]
-    pub unsafe fn arg<T: VaArgSafe>(&mut self) -> T {
+    #[rustc_const_unstable(feature = "c_variadic_const", issue = "none")]
+    pub const unsafe fn arg<T: VaArgSafe>(&mut self) -> T {
         // SAFETY: the caller must uphold the safety contract for `va_arg`.
         unsafe { va_arg(self) }
     }
@@ -265,7 +266,8 @@ impl<'f> Clone for VaList<'f> {
     }
 }
 
-impl<'f> Drop for VaList<'f> {
+#[rustc_const_unstable(feature = "const_drop_va_list", issue = "none")]
+impl<'f> const Drop for VaList<'f> {
     fn drop(&mut self) {
         // Rust requires that not calling `va_end` on a `va_list` does not cause undefined behaviour
         // (as it is safe to leak values). As `va_end` is a no-op on all current LLVM targets, this

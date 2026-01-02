@@ -111,7 +111,7 @@ impl<'tcx, Other> FnVal<'tcx, Other> {
     }
 }
 
-pub(super) struct VaListData<'tcx, M: Machine<'tcx>> {
+pub struct VaListData<'tcx, M: Machine<'tcx>> {
     /// Places of the C-variadic arguments.
     pub arguments: Weak<[MPlaceTy<'tcx, M::Provenance>]>,
 
@@ -137,7 +137,7 @@ pub struct Memory<'tcx, M: Machine<'tcx>> {
     /// Map for "extra" function pointers.
     extra_fn_ptr_map: FxIndexMap<AllocId, M::ExtraFnVal>,
 
-    pub(super) va_lists_map: FxIndexMap<AllocId, VaListData<'tcx, M>>,
+    pub va_lists_map: FxIndexMap<AllocId, VaListData<'tcx, M>>,
 
     /// To be able to compare pointers with null, and to check alignment for accesses
     /// to ZSTs (where pointers may dangle), we keep track of the size even for allocations

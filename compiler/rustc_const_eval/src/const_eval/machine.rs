@@ -23,8 +23,8 @@ use crate::fluent_generated as fluent;
 use crate::interpret::{
     self, AllocId, AllocInit, AllocRange, ConstAllocation, CtfeProvenance, FnArg, Frame,
     GlobalAlloc, ImmTy, InterpCx, InterpResult, OpTy, PlaceTy, Pointer, RangeSet, Scalar,
-    compile_time_machine, err_inval, interp_ok, throw_exhaust, throw_inval, throw_ub,
-    throw_ub_custom, throw_unsup, throw_unsup_format,
+    compile_time_machine, err_inval, err_unsup_format, interp_ok, throw_exhaust, throw_inval,
+    throw_ub, throw_ub_custom, throw_unsup, throw_unsup_format,
 };
 
 /// When hitting this many interpreted terminators we emit a deny by default lint
@@ -584,6 +584,50 @@ impl<'tcx> interpret::Machine<'tcx> for CompileTimeMachine<'tcx> {
                     // Skip the `return_to_block` at the end (we panicked, we do not return).
                     return interp_ok(None);
                 }
+            }
+
+            sym::va_arg => {
+                // Signature: unsafe fn va_arg<T: VaArgSafe>(ap: &mut VaList<'_>) -> T;
+
+                // 1) Read the &mut VaList<'_> argument
+                // let ap = ecx.read_pointer(&args[0])?;
+                // let alloc_id = ap.provenance.unwrap().alloc_id();
+                let alloc_id = {
+                    let va_list_ty = args[0]
+                        .layout()
+                        .ty
+                        .builtin_deref(true)
+                        .expect("va_list argument should be a reference");
+
+                    let base_layout = ecx.layout_of(va_list_ty)?;
+                    let tag_layout = ecx.layout_of(ecx.tcx.types.usize)?;
+
+                    let tag_scalar =
+                        ecx.deref_pointer_and_read(ap_ref, 0, base_layout, tag_layout)?;
+                    let id = tag_scalar.to_u64()?;
+                };
+
+                // 4) Lookup and advance cursor
+                let data = ecx.memory.va_lists_map.get_mut(&alloc_id).ok_or_else(|| {
+                    err_unsup_format!("va_arg on unknown va_list allocation {:?}", alloc_id)
+                })?;
+
+                let idx = data.next_index;
+                data.next_index = data
+                    .next_index
+                    .checked_add(1)
+                    .ok_or_else(|| err_unsup_format!("va_arg index overflow"))?;
+
+                let rc_args = data
+                    .arguments
+                    .upgrade()
+                    .ok_or_else(|| err_unsup_format!("va_list arguments no longer live"))?;
+
+                let src_mplace = rc_args
+                    .get(idx)
+                    .ok_or_else(|| err_unsup_format!("va_arg out of bounds (idx={})", idx))?;
+
+                ecx.copy_op(src_mplace, dest)?;
             }
 
             _ => {
