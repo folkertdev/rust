@@ -10,7 +10,6 @@ use std::assert_matches::assert_matches;
 use std::borrow::{Borrow, Cow};
 use std::cell::Cell;
 use std::collections::VecDeque;
-use std::rc::Weak;
 use std::{fmt, ptr};
 
 use rustc_abi::{Align, HasDataLayout, Size};
@@ -111,14 +110,6 @@ impl<'tcx, Other> FnVal<'tcx, Other> {
     }
 }
 
-pub struct VaListData<'tcx, M: Machine<'tcx>> {
-    /// Places of the C-variadic arguments.
-    pub arguments: Weak<[MPlaceTy<'tcx, M::Provenance>]>,
-
-    /// Index of the next argument that `va_arg` will read.
-    pub next_index: usize,
-}
-
 // `Memory` has to depend on the `Machine` because some of its operations
 // (e.g., `get`) call a `Machine` hook.
 pub struct Memory<'tcx, M: Machine<'tcx>> {
@@ -137,7 +128,7 @@ pub struct Memory<'tcx, M: Machine<'tcx>> {
     /// Map for "extra" function pointers.
     extra_fn_ptr_map: FxIndexMap<AllocId, M::ExtraFnVal>,
 
-    pub va_lists_map: FxIndexMap<AllocId, VaListData<'tcx, M>>,
+    pub va_lists_map: FxIndexMap<AllocId, Vec<MPlaceTy<'tcx, M::Provenance>>>,
 
     /// To be able to compare pointers with null, and to check alignment for accesses
     /// to ZSTs (where pointers may dangle), we keep track of the size even for allocations
@@ -406,6 +397,13 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                         fluent::const_eval_invalid_dealloc,
                         alloc_id = alloc_id,
                         kind = "vtable",
+                    )
+                }
+                Some(GlobalAlloc::VaList) => {
+                    err_ub_custom!(
+                        fluent::const_eval_invalid_dealloc,
+                        alloc_id = alloc_id,
+                        kind = "valist",
                     )
                 }
                 Some(GlobalAlloc::TypeId { .. }) => {
@@ -684,6 +682,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             }
             Some(GlobalAlloc::Function { .. }) => throw_ub!(DerefFunctionPointer(id)),
             Some(GlobalAlloc::VTable(..)) => throw_ub!(DerefVTablePointer(id)),
+            Some(GlobalAlloc::VaList) => throw_ub!(DerefVaListPointer(id)),
             Some(GlobalAlloc::TypeId { .. }) => throw_ub!(DerefTypeIdPointer(id)),
             None => throw_ub!(PointerUseAfterFree(id, CheckInAllocMsg::MemoryAccess)),
             Some(GlobalAlloc::Static(def_id)) => {
@@ -974,6 +973,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 GlobalAlloc::Static { .. } | GlobalAlloc::Memory { .. } => AllocKind::LiveData,
                 GlobalAlloc::Function { .. } => bug!("We already checked function pointers above"),
                 GlobalAlloc::VTable { .. } => AllocKind::VTable,
+                GlobalAlloc::VaList { .. } => AllocKind::VaList,
                 GlobalAlloc::TypeId { .. } => AllocKind::TypeId,
             };
             return AllocInfo::new(size, align, kind, mutbl);
@@ -1285,6 +1285,9 @@ impl<'a, 'tcx, M: Machine<'tcx>> std::fmt::Debug for DumpAllocs<'a, 'tcx, M> {
                         }
                         Some(GlobalAlloc::VTable(ty, dyn_ty)) => {
                             write!(fmt, " (vtable: impl {dyn_ty} for {ty})")?;
+                        }
+                        Some(GlobalAlloc::VaList) => {
+                            write!(fmt, " (valist)")?;
                         }
                         Some(GlobalAlloc::TypeId { ty }) => {
                             write!(fmt, " (typeid for {ty})")?;

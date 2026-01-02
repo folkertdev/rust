@@ -1,7 +1,6 @@
 //! Manages the low-level pushing and popping of stack frames and the (de)allocation of local variables.
 //! For handling of argument passing and return values, see the `call` module.
 use std::cell::Cell;
-use std::rc::Rc;
 use std::{fmt, mem};
 
 use either::{Either, Left, Right};
@@ -92,8 +91,9 @@ pub struct Frame<'tcx, Prov: Provenance = CtfeProvenance, Extra = ()> {
     /// Do *not* access this directly; always go through the machine hook!
     pub locals: IndexVec<mir::Local, LocalState<'tcx, Prov>>,
 
-    /// Places of the C-variadic arguments.
-    pub(super) varargs: Rc<[MPlaceTy<'tcx, Prov>]>,
+    /// Key into `Memory`'s `va_lists_map` field. When this frame is popped the key should be
+    /// removed from `va_lists_map` and the elements deallocated.
+    pub(super) varargs: Option<AllocId>,
 
     /// The span of the `tracing` crate is stored here.
     /// When the guard is dropped, the span is exited. This gives us
@@ -382,7 +382,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             return_cont,
             return_place: return_place.clone(),
             locals,
-            varargs: Rc::default(),
+            varargs: None,
             instance,
             tracing_span: SpanGuard::new(),
             extra: (),
@@ -461,8 +461,11 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             }
 
             // Deallocate any c-variadic arguments. This takes the place of `va_end`.
-            for mplace in frame.varargs.iter() {
-                self.deallocate_vararg(mplace)?;
+            if let Some(alloc_id) = frame.varargs {
+                let arguments = self.memory.va_lists_map.shift_remove(&alloc_id).unwrap();
+                for mplace in arguments {
+                    self.deallocate_vararg(&mplace)?;
+                }
             }
 
             // Call the machine hook, which determines the next steps.

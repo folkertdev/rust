@@ -587,47 +587,44 @@ impl<'tcx> interpret::Machine<'tcx> for CompileTimeMachine<'tcx> {
             }
 
             sym::va_arg => {
-                // Signature: unsafe fn va_arg<T: VaArgSafe>(ap: &mut VaList<'_>) -> T;
+                let ap_ref = ecx.read_pointer(&args[0])?;
 
-                // 1) Read the &mut VaList<'_> argument
-                // let ap = ecx.read_pointer(&args[0])?;
-                // let alloc_id = ap.provenance.unwrap().alloc_id();
-                let alloc_id = {
-                    let va_list_ty = args[0]
-                        .layout()
-                        .ty
-                        .builtin_deref(true)
-                        .expect("va_list argument should be a reference");
+                // 2) Read the first pointer-sized word from the va_list storage as a *pointer* scalar.
+                let ptr_size = ecx.tcx.data_layout.pointer_size();
+                // Get a reference to the underlying allocation for the va_list blob.
+                let alloc = ecx
+                    .get_ptr_alloc(ap_ref, ptr_size)?
+                    .expect("va_list storage should not be a ZST");
 
-                    let base_layout = ecx.layout_of(va_list_ty)?;
-                    let tag_layout = ecx.layout_of(ecx.tcx.types.usize)?;
+                let scalar = alloc.read_pointer(Size::ZERO)?; // or: alloc.read_scalar(Size::ZERO, ptr_layout)?
+                let handle_ptr = scalar.to_pointer(ecx)?;
 
-                    let tag_scalar =
-                        ecx.deref_pointer_and_read(ap_ref, 0, base_layout, tag_layout)?;
-                    let id = tag_scalar.to_u64()?;
-                };
+                let (prov, offset) = handle_ptr.into_raw_parts();
+                let index = offset.bytes_usize();
+
+                let new_handle_ptr = handle_ptr.wrapping_offset(Size::from_bytes(1), ecx);
+                let v = Scalar::from_maybe_pointer(new_handle_ptr, ecx);
+                let mut alloc = ecx
+                    .get_ptr_alloc_mut(ap_ref, ptr_size)?
+                    .expect("va_list storage should not be a ZST");
+                alloc.write_ptr_sized(Size::ZERO, v)?;
+
+                // 3) Extract the AllocId from provenance — this is the key you inserted into `va_lists_map`.
+                let alloc_id = prov.unwrap().alloc_id();
+
+                let GlobalAlloc::VaList = ecx.tcx.global_alloc(alloc_id) else { panic!() };
 
                 // 4) Lookup and advance cursor
-                let data = ecx.memory.va_lists_map.get_mut(&alloc_id).ok_or_else(|| {
+                let arguments = ecx.memory.va_lists_map.get(&alloc_id).ok_or_else(|| {
                     err_unsup_format!("va_arg on unknown va_list allocation {:?}", alloc_id)
                 })?;
 
-                let idx = data.next_index;
-                data.next_index = data
-                    .next_index
-                    .checked_add(1)
-                    .ok_or_else(|| err_unsup_format!("va_arg index overflow"))?;
+                let src_mplace = arguments
+                    .get(index)
+                    .ok_or_else(|| err_unsup_format!("va_arg out of bounds (index={index})"))?
+                    .clone();
 
-                let rc_args = data
-                    .arguments
-                    .upgrade()
-                    .ok_or_else(|| err_unsup_format!("va_list arguments no longer live"))?;
-
-                let src_mplace = rc_args
-                    .get(idx)
-                    .ok_or_else(|| err_unsup_format!("va_arg out of bounds (idx={})", idx))?;
-
-                ecx.copy_op(src_mplace, dest)?;
+                ecx.copy_op(&src_mplace, dest)?;
             }
 
             _ => {

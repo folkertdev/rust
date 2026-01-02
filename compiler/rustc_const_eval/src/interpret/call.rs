@@ -2,12 +2,12 @@
 //! and returning the return value to the caller.
 use std::assert_matches::assert_matches;
 use std::borrow::Cow;
-use std::rc::Rc;
 
 use either::{Left, Right};
-use rustc_abi::{self as abi, ExternAbi, FieldIdx, Integer, VariantIdx};
+use rustc_abi::{self as abi, ExternAbi, FieldIdx, Integer, Size, VariantIdx};
 use rustc_hir::def_id::DefId;
-use rustc_middle::ty::layout::{IntegerExt, TyAndLayout};
+use rustc_middle::mir::interpret::Pointer;
+use rustc_middle::ty::layout::{HasTyCtxt, IntegerExt, TyAndLayout};
 use rustc_middle::ty::{self, AdtDef, Instance, Ty, VariantDef};
 use rustc_middle::{bug, mir, span_bug};
 use rustc_span::sym;
@@ -472,10 +472,37 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     let place = self.eval_place(dest)?;
                     let mplace = self.force_allocation(&place)?;
 
-                    self.write_bytes_ptr(
-                        mplace.ptr(),
-                        std::iter::repeat(0u8).take(mplace.layout.size.bytes_usize()),
-                    )?;
+                    let id = self.tcx().reserve_and_set_va_list_alloc();
+
+                    // Functions are global allocations, so make sure we get the right root pointer.
+                    // We know this is not an `extern static` so this cannot fail.
+                    let ptr = self.global_root_pointer(Pointer::from(id)).unwrap();
+                    {
+                        // Slice out the vararg part of the actual arguments.
+                        let vararg_args = &args[fixed_count..];
+                        let vararg_abis = &caller_fn_abi.args[fixed_count..];
+
+                        debug_assert_eq!(vararg_args.len(), vararg_abis.len());
+
+                        let mut varargs = Vec::with_capacity(vararg_args.len());
+                        for (fn_arg, abi) in vararg_args.iter().zip(vararg_abis) {
+                            let op = self.copy_fn_arg(fn_arg);
+                            let mplace = self.allocate(abi.layout, MemoryKind::Stack)?;
+                            self.copy_op(&op, &mplace)?;
+
+                            varargs.push(mplace);
+                        }
+
+                        self.memory.va_lists_map.insert(id, varargs);
+
+                        self.frame_mut().varargs = Some(id);
+                    }
+
+                    let ptr_size = self.tcx().data_layout.pointer_size();
+                    let v = Scalar::from_pointer(ptr, self);
+                    let mut alloc =
+                        self.get_ptr_alloc_mut(mplace.ptr(), ptr_size)?.expect("not a ZST");
+                    alloc.write_ptr_sized(Size::ZERO, v)?;
                 } else if Some(local) == body.spread_arg {
                     // Make the local live once, then fill in the value field by field.
                     self.storage_live(local)?;
