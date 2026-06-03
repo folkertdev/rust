@@ -1,6 +1,8 @@
 use std::cmp;
 
-use rustc_abi::{Align, BackendRepr, ExternAbi, HasDataLayout, Reg, Size, WrappingRange};
+use rustc_abi::{
+    Align, ArmCall, BackendRepr, CanonAbi, ExternAbi, HasDataLayout, Reg, Size, WrappingRange,
+};
 use rustc_ast as ast;
 use rustc_ast::{InlineAsmOptions, InlineAsmTemplatePiece};
 use rustc_data_structures::packed::Pu128;
@@ -544,6 +546,47 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             bx.unreachable();
             return;
         }
+
+        // A `cmse-nonsecure-entry` function returns its value in registers to a
+        // non-secure caller. Any padding or otherwise-uninitialized bytes in the
+        // return value would leak secure-world data across the security boundary,
+        // so we zero them out here. Such a value is passed via `PassMode::Cast`
+        // (small aggregates fit in a register but carry padding); plain scalars
+        // and 64-bit scalars have no padding and need no clearing.
+        //
+        // This must happen in codegen: at the Rust level these bytes are never
+        // read, so expressing the writes earlier would let the optimizer delete
+        // them. By spilling to a stack slot, zeroing the padding, and reloading
+        // the value as raw bytes that are then returned, the `memset`s feed an
+        // observable result and survive optimization.
+        if self.fn_abi.conv == CanonAbi::Arm(ArmCall::CCmseNonSecureEntry)
+            && let PassMode::Cast { cast, .. } = &self.fn_abi.ret.mode
+        {
+            let ret_layout = self.fn_abi.ret.layout;
+            let uninit_ranges = ret_layout.uninit_ranges(bx.cx());
+            if !uninit_ranges.is_empty() {
+                // Materialize the return value into a stack slot we control.
+                let scratch = PlaceRef::alloca(bx, ret_layout);
+                let op = self.codegen_consume(bx, mir::Place::return_place().as_ref());
+                op.val.store(bx, scratch);
+
+                // Zero every statically-uninitialized byte range.
+                let zero = bx.const_u8(0);
+                for range in uninit_ranges {
+                    let ptr =
+                        bx.inbounds_ptradd(scratch.val.llval, bx.const_usize(range.start.bytes()));
+                    let len = bx.const_usize((range.end - range.start).bytes());
+                    bx.memset(ptr, zero, len, Align::ONE, MemFlags::empty());
+                }
+
+                // Load the (now padding-free) value back with the ABI cast type
+                // and return it.
+                let llval = load_cast(bx, cast, scratch.val.llval, ret_layout.align.abi);
+                bx.ret(llval);
+                return;
+            }
+        }
+
         let llval = match &self.fn_abi.ret.mode {
             PassMode::Ignore | PassMode::Indirect { .. } => {
                 bx.ret_void();
@@ -1226,6 +1269,12 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         // that extend for the duration of a call. Keep track of those allocations and their sizes
         // to generate `lifetime_end` when the call returns.
         let mut lifetime_ends_after_call: Vec<(Bx::Value, Size)> = Vec::new();
+
+        // `cmse-nonsecure-call` passes its arguments in registers to the
+        // non-secure callee; padding/uninitialized bytes must be zeroed first so
+        // they don't leak secure-world data across the security boundary.
+        let clear_uninit_padding = fn_abi.conv == CanonAbi::Arm(ArmCall::CCmseNonSecureCall);
+
         'make_args: for (i, arg) in first_args.iter().enumerate() {
             let mut op = self.codegen_operand(bx, &arg.node);
 
@@ -1331,6 +1380,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 &mut llargs,
                 &fn_abi.args[i],
                 &mut lifetime_ends_after_call,
+                clear_uninit_padding,
             );
         }
         let num_untupled = untuple.map(|tup| {
@@ -1340,6 +1390,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 &mut llargs,
                 &fn_abi.args[first_args.len()..],
                 &mut lifetime_ends_after_call,
+                clear_uninit_padding,
             )
         });
 
@@ -1370,6 +1421,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 &mut llargs,
                 last_arg,
                 &mut lifetime_ends_after_call,
+                clear_uninit_padding,
             );
         }
 
@@ -1689,6 +1741,10 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         llargs: &mut Vec<Bx::Value>,
         arg: &ArgAbi<'tcx, Ty<'tcx>>,
         lifetime_ends_after_call: &mut Vec<(Bx::Value, Size)>,
+        // For `cmse-nonsecure-call`, padding/uninitialized bytes of by-value
+        // arguments must be zeroed before the call so we don't leak secure-world
+        // data to the non-secure callee.
+        clear_uninit_padding: bool,
     ) {
         match arg.mode {
             PassMode::Ignore => return,
@@ -1806,6 +1862,24 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     MemFlags::empty(),
                     None,
                 );
+                if clear_uninit_padding {
+                    // Zero any padding/uninitialized bytes before loading the
+                    // value to pass it to a `cmse-nonsecure-call`. We load the
+                    // raw cast type below, so the zeroed bytes are part of the
+                    // passed value and the `memset`s survive optimization.
+                    let limit = Size::from_bytes(copy_bytes);
+                    let zero = bx.const_u8(0);
+                    for range in arg.layout.uninit_ranges(bx.cx()) {
+                        let end = cmp::min(range.end, limit);
+                        if range.start >= end {
+                            continue;
+                        }
+                        let ptr =
+                            bx.inbounds_ptradd(llscratch, bx.const_usize(range.start.bytes()));
+                        let len = bx.const_usize((end - range.start).bytes());
+                        bx.memset(ptr, zero, len, Align::ONE, MemFlags::empty());
+                    }
+                }
                 // ...and then load it with the ABI type.
                 llval = load_cast(bx, cast, llscratch, scratch_align);
                 bx.lifetime_end(llscratch, scratch_size);
@@ -1836,6 +1910,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         llargs: &mut Vec<Bx::Value>,
         args: &[ArgAbi<'tcx, Ty<'tcx>>],
         lifetime_ends_after_call: &mut Vec<(Bx::Value, Size)>,
+        clear_uninit_padding: bool,
     ) -> usize {
         let tuple = self.codegen_operand(bx, operand);
         let by_move = matches!(operand, mir::Operand::Move(_));
@@ -1856,13 +1931,22 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     llargs,
                     &args[i],
                     lifetime_ends_after_call,
+                    clear_uninit_padding,
                 );
             }
         } else {
             // If the tuple is immediate, the elements are as well.
             for i in 0..tuple.layout.fields.count() {
                 let op = tuple.extract_field(self, bx, i);
-                self.codegen_argument(bx, op, by_move, llargs, &args[i], lifetime_ends_after_call);
+                self.codegen_argument(
+                    bx,
+                    op,
+                    by_move,
+                    llargs,
+                    &args[i],
+                    lifetime_ends_after_call,
+                    clear_uninit_padding,
+                );
             }
         }
         tuple.layout.fields.count()
