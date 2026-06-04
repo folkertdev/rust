@@ -11,6 +11,7 @@ features! {
     /// the macro expands to `true`.
     #[unstable(feature = "stdarch_arm_feature_detection", issue = "111190")]
     @NO_RUNTIME_DETECTION: "v7";
+    @NO_RUNTIME_DETECTION: "v8";
     @NO_RUNTIME_DETECTION: "vfp2";
     @NO_RUNTIME_DETECTION: "vfp3";
     @NO_RUNTIME_DETECTION: "vfp4";
