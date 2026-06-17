@@ -49,6 +49,7 @@ impl<FieldIdx: Idx, VariantIdx: Idx> LayoutData<FieldIdx, VariantIdx> {
     pub fn scalar<C: HasDataLayout>(cx: &C, scalar: Scalar) -> Self {
         let largest_niche = Niche::from_scalar(cx, Size::ZERO, scalar);
         let size = scalar.size(cx);
+
         let align = scalar.default_align(cx);
 
         let range = scalar.valid_range(cx);

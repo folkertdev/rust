@@ -1106,7 +1106,7 @@ impl<'tcx> Ty<'tcx> {
             ty::Char => Size::from_bytes(4),
             ty::Int(ity) => Integer::from_int_ty(&tcx, ity).size(),
             ty::Uint(uty) => Integer::from_uint_ty(&tcx, uty).size(),
-            ty::Float(fty) => Float::from_float_ty(fty).size(),
+            ty::Float(fty) => Float::from_float_ty(fty).size(&tcx),
             _ => bug!("non primitive type"),
         }
     }

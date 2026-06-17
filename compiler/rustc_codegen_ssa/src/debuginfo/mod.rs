@@ -73,7 +73,7 @@ fn tag_base_type_opt<'tcx>(
             Some(
                 match tag.primitive() {
                     Primitive::Int(t, _) => t,
-                    Primitive::Float(f) => Integer::from_size(f.size()).unwrap(),
+                    Primitive::Float(f) => Integer::from_size(f.size(&tcx)).unwrap(),
                     // FIXME(erikdesjardins): handle non-default addrspace ptr sizes
                     Primitive::Pointer(_) => {
                         // If the niche is the NULL value of a reference, then `discr_enum_ty` will

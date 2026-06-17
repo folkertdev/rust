@@ -1356,14 +1356,15 @@ pub enum Float {
 }
 
 impl Float {
-    pub fn size(self) -> Size {
+    pub fn size<C: HasDataLayout>(self, cx: &C) -> Size {
         use Float::*;
+        let dl = cx.data_layout();
 
         match self {
             F16 => Size::from_bits(16),
             F32 => Size::from_bits(32),
             F64 => Size::from_bits(64),
-            F80 => Size::from_bits(80),
+            F80 => Size::from_bits(80).align_to(dl.f80_align),
             F128 => Size::from_bits(128),
         }
     }
@@ -1405,7 +1406,7 @@ impl Primitive {
 
         match self {
             Int(i, _) => i.size(),
-            Float(f) => f.size(),
+            Float(f) => f.size(dl),
             Pointer(a) => dl.pointer_size_in(a),
         }
     }

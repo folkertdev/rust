@@ -5,6 +5,16 @@ use crate::mem::transmute;
 #[macro_use]
 mod macros;
 
+/// The x87 80-bit extended-precision floating-point type (`long double` on x86 System V).
+///
+/// A type path resolving to this item is lowered by the compiler to the primitive `f80`
+/// float type (`ty::Float(FloatTy::F80)`); the empty enum body is only a placeholder and is
+/// never used as the value representation.
+#[lang = "f80"]
+#[unstable(feature = "x86_f80", issue = "none")]
+#[allow(non_camel_case_types)]
+pub enum f80 {}
+
 types! {
     #![stable(feature = "simd_x86", since = "1.27.0")]
 

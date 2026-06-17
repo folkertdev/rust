@@ -3,7 +3,7 @@ use std::iter;
 use rustc_abi::{BackendRepr, HasDataLayout, Primitive, TyAbiInterface};
 
 use crate::callconv::{ArgAbi, FnAbi, Reg, RegKind, Uniform};
-use crate::spec::{HasTargetSpec, RustcAbi, Target};
+use crate::spec::{HasTargetSpec, RustcAbi};
 
 /// Indicates the variant of the AArch64 ABI we are compiling for.
 /// Used to accommodate Apple and Microsoft's deviations from the usual AAPCS ABI.
@@ -42,8 +42,11 @@ where
     })
 }
 
-fn softfloat_float_abi<Ty>(target: &Target, arg: &mut ArgAbi<'_, Ty>) {
-    if target.rustc_abi != Some(RustcAbi::Softfloat) {
+fn softfloat_float_abi<Ty, C>(cx: &C, arg: &mut ArgAbi<'_, Ty>)
+where
+    C: HasDataLayout + HasTargetSpec,
+{
+    if cx.target_spec().rustc_abi != Some(RustcAbi::Softfloat) {
         return;
     }
     // Do *not* use the float registers for passing arguments, as that would make LLVM pick the ABI
@@ -55,7 +58,7 @@ fn softfloat_float_abi<Ty>(target: &Target, arg: &mut ArgAbi<'_, Ty>) {
     if let BackendRepr::Scalar(s) = arg.layout.backend_repr
         && let Primitive::Float(f) = s.primitive()
     {
-        arg.cast_to(Reg { kind: RegKind::Integer, size: f.size() });
+        arg.cast_to(Reg { kind: RegKind::Integer, size: f.size(cx) });
     } else if let BackendRepr::ScalarPair(s1, s2) = arg.layout.backend_repr
         && (matches!(s1.primitive(), Primitive::Float(_))
             || matches!(s2.primitive(), Primitive::Float(_)))
@@ -66,7 +69,7 @@ fn softfloat_float_abi<Ty>(target: &Target, arg: &mut ArgAbi<'_, Ty>) {
         // indirection. This means we lose the nice "pass it as two arguments" optimization, but we
         // currently just have to way to combine a `PassMode::Cast` with that optimization (and we
         // need a cast since we want to pass the float as an int).
-        if arg.layout.size.bits() <= target.pointer_width.into() {
+        if arg.layout.size.bits() <= cx.target_spec().pointer_width.into() {
             arg.cast_to(Reg { kind: RegKind::Integer, size: arg.layout.size });
         } else {
             arg.make_indirect();
@@ -91,7 +94,7 @@ where
             // See also: <https://developer.apple.com/documentation/xcode/writing-arm64-code-for-apple-platforms#Pass-Arguments-to-Functions-Correctly>
             ret.extend_integer_width_to(32)
         }
-        softfloat_float_abi(cx.target_spec(), ret);
+        softfloat_float_abi(cx, ret);
         return;
     }
     if let Some(uniform) = is_homogeneous_aggregate(cx, ret) {
@@ -128,7 +131,7 @@ where
             // See also: <https://developer.apple.com/documentation/xcode/writing-arm64-code-for-apple-platforms#Pass-Arguments-to-Functions-Correctly>
             arg.extend_integer_width_to(32);
         }
-        softfloat_float_abi(cx.target_spec(), arg);
+        softfloat_float_abi(cx, arg);
 
         return;
     }
@@ -180,6 +183,6 @@ where
     C: HasDataLayout + HasTargetSpec,
 {
     for arg in fn_abi.args.iter_mut().chain(iter::once(&mut fn_abi.ret)) {
-        softfloat_float_abi(cx.target_spec(), arg);
+        softfloat_float_abi(cx, arg);
     }
 }

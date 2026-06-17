@@ -1,4 +1,6 @@
-use rustc_abi::{Align, BackendRepr, CVariadicStatus, Endian, HasDataLayout, Primitive, Size};
+use rustc_abi::{
+    Align, BackendRepr, CVariadicStatus, Endian, Float, HasDataLayout, Primitive, Size,
+};
 use rustc_codegen_ssa::MemFlags;
 use rustc_codegen_ssa::common::IntPredicate;
 use rustc_codegen_ssa::mir::operand::OperandRef;
@@ -302,7 +304,7 @@ fn emit_powerpc_va_arg<'ll, 'tcx>(
     let (is_i64, is_int, is_f64) = match layout.layout.backend_repr() {
         BackendRepr::Scalar(scalar) => match scalar.primitive() {
             rustc_abi::Primitive::Int(integer, _) => (integer.size().bits() == 64, true, false),
-            rustc_abi::Primitive::Float(float) => (false, false, float.size().bits() == 64),
+            rustc_abi::Primitive::Float(float) => (false, false, matches!(float, Float::F64)),
             rustc_abi::Primitive::Pointer(_) => (false, true, false),
         },
         _ => unreachable!("all instances of VaArgSafe are represented as scalars"),
@@ -553,7 +555,7 @@ fn emit_x86_64_sysv64_va_arg<'ll, 'tcx>(
             num_gp_registers += integer.size().bytes().div_ceil(8) as u32;
         }
         Primitive::Float(float) => {
-            num_fp_registers += float.size().bytes().div_ceil(16) as u32;
+            num_fp_registers += float.size(bx.cx).bytes().div_ceil(16) as u32;
         }
         Primitive::Pointer(_) => {
             num_gp_registers += 1;
