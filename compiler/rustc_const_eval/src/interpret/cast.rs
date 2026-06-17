@@ -181,6 +181,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             FloatTy::F16 => self.cast_from_float(src.to_scalar().to_f16()?, cast_to.ty),
             FloatTy::F32 => self.cast_from_float(src.to_scalar().to_f32()?, cast_to.ty),
             FloatTy::F64 => self.cast_from_float(src.to_scalar().to_f64()?, cast_to.ty),
+            // FIXME(f80): needs apfloat x87 extended-precision support and `Scalar::to_f80`.
+            FloatTy::F80 => todo!(),
             FloatTy::F128 => self.cast_from_float(src.to_scalar().to_f128()?, cast_to.ty),
         };
         interp_ok(ImmTy::from_scalar(val, cast_to))
@@ -293,6 +295,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     FloatTy::F16 => Scalar::from_f16(Half::from_i128(v).value),
                     FloatTy::F32 => Scalar::from_f32(Single::from_i128(v).value),
                     FloatTy::F64 => Scalar::from_f64(Double::from_i128(v).value),
+                    // FIXME(f80): needs apfloat x87 extended-precision support and `Scalar::from_f80`.
+                    FloatTy::F80 => todo!(),
                     FloatTy::F128 => Scalar::from_f128(Quad::from_i128(v).value),
                 }
             }
@@ -301,6 +305,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 FloatTy::F16 => Scalar::from_f16(Half::from_u128(v).value),
                 FloatTy::F32 => Scalar::from_f32(Single::from_u128(v).value),
                 FloatTy::F64 => Scalar::from_f64(Double::from_u128(v).value),
+                // FIXME(f80): needs apfloat x87 extended-precision support and `Scalar::from_f80`.
+                FloatTy::F80 => todo!(),
                 FloatTy::F128 => Scalar::from_f128(Quad::from_u128(v).value),
             },
 
@@ -351,6 +357,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 FloatTy::F64 => {
                     Scalar::from_f64(self.adjust_nan(f.convert(&mut false).value, &[f]))
                 }
+                // FIXME(f80): needs apfloat x87 extended-precision support and `Scalar::from_f80`.
+                FloatTy::F80 => todo!(),
                 FloatTy::F128 => {
                     Scalar::from_f128(self.adjust_nan(f.convert(&mut false).value, &[f]))
                 }

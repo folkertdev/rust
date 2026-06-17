@@ -374,6 +374,8 @@ pub(crate) fn encode_ty<'tcx>(
                 FloatTy::F16 => "Dh",
                 FloatTy::F32 => "f",
                 FloatTy::F64 => "d",
+                // FIXME(f80): pick the correct Itanium C++ ABI mangling for x87 extended precision.
+                FloatTy::F80 => todo!(),
                 FloatTy::F128 => "g",
             });
         }

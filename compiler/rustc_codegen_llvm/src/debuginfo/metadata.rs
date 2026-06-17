@@ -702,6 +702,8 @@ impl MsvcBasicName for ty::FloatTy {
             }
             ty::FloatTy::F32 => "float",
             ty::FloatTy::F64 => "double",
+            // FIXME(f80): `f80` has no MSVC representation. We could improve the debuginfo.
+            ty::FloatTy::F80 => todo!(),
             ty::FloatTy::F128 => "fp128",
         }
     }

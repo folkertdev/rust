@@ -1712,6 +1712,8 @@ impl PrimitiveType {
             hir::PrimTy::Float(FloatTy::F16) => PrimitiveType::F16,
             hir::PrimTy::Float(FloatTy::F32) => PrimitiveType::F32,
             hir::PrimTy::Float(FloatTy::F64) => PrimitiveType::F64,
+            // FIXME(f80): rustdoc's `PrimitiveType` has no `F80` variant yet.
+            hir::PrimTy::Float(FloatTy::F80) => todo!(),
             hir::PrimTy::Float(FloatTy::F128) => PrimitiveType::F128,
             hir::PrimTy::Str => PrimitiveType::Str,
             hir::PrimTy::Bool => PrimitiveType::Bool,
@@ -1954,6 +1956,8 @@ impl From<ty::FloatTy> for PrimitiveType {
             ty::FloatTy::F16 => PrimitiveType::F16,
             ty::FloatTy::F32 => PrimitiveType::F32,
             ty::FloatTy::F64 => PrimitiveType::F64,
+            // FIXME(f80): rustdoc's `PrimitiveType` has no `F80` variant yet.
+            ty::FloatTy::F80 => todo!(),
             ty::FloatTy::F128 => PrimitiveType::F128,
         }
     }

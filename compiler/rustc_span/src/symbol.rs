@@ -940,6 +940,7 @@ symbols! {
         f32_nan,
         f64,
         f64_nan,
+        f80,
         f128,
         f128_nan,
         fabs,

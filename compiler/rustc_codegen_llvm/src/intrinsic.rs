@@ -345,6 +345,10 @@ impl<'ll, 'tcx> IntrinsicCallBuilderMethods<'tcx> for Builder<'_, 'll, 'tcx> {
                     Primitive::Float(Float::F64) => {
                         // 64-bit floats are always OK.
                     }
+                    Primitive::Float(Float::F80) => {
+                        // FIXME(f80) figure out whether we should support this.
+                        bug!("the va_arg intrinsic does not support `f80`")
+                    }
                     Primitive::Float(Float::F128) => {
                         // FIXME(f128) figure out whether we should support this.
                         bug!("the va_arg intrinsic does not support `f128`")

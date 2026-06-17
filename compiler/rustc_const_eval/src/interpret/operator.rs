@@ -390,6 +390,9 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     FloatTy::F64 => {
                         self.binary_float_op(bin_op, layout, left.to_f64()?, right.to_f64()?)
                     }
+                    FloatTy::F80 => {
+                        todo!();
+                    }
                     FloatTy::F128 => {
                         self.binary_float_op(bin_op, layout, left.to_f128()?, right.to_f128()?)
                     }
@@ -461,6 +464,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     FloatTy::F16 => Scalar::from_f16(-val.to_f16()?),
                     FloatTy::F32 => Scalar::from_f32(-val.to_f32()?),
                     FloatTy::F64 => Scalar::from_f64(-val.to_f64()?),
+                    FloatTy::F80 => todo!(),
                     FloatTy::F128 => Scalar::from_f128(-val.to_f128()?),
                 };
                 interp_ok(ImmTy::from_scalar(res, layout))

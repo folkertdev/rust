@@ -634,6 +634,7 @@ pub enum FloatTy {
     F16,
     F32,
     F64,
+    F80,
     F128,
 }
 

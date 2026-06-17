@@ -351,6 +351,7 @@ pub enum FloatLength {
     F16,
     F32,
     F64,
+    F80,
     F128,
 }
 
@@ -372,6 +373,7 @@ impl FloatLength {
             FloatLength::F16 => 16,
             FloatLength::F32 => 32,
             FloatLength::F64 => 64,
+            FloatLength::F80 => 80,
             FloatLength::F128 => 128,
         }
     }

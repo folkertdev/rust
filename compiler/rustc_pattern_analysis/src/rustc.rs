@@ -641,6 +641,9 @@ impl<'p, 'tcx: 'p> RustcPatCtxt<'p, 'tcx> {
                                 let hi = hi.map(Double::from_bits).unwrap_or(Double::INFINITY);
                                 F64Range(lo, hi, end)
                             }
+                            ty::FloatTy::F80 => {
+                                todo!();
+                            }
                             ty::FloatTy::F128 => {
                                 use rustc_apfloat::ieee::Quad;
                                 let lo = lo.map(Quad::from_bits).unwrap_or(-Quad::INFINITY);

@@ -605,6 +605,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     FloatTy::F16 => self.unop_float_intrinsic::<Half>(intrinsic_name, arg)?,
                     FloatTy::F32 => self.unop_float_intrinsic::<Single>(intrinsic_name, arg)?,
                     FloatTy::F64 => self.unop_float_intrinsic::<Double>(intrinsic_name, arg)?,
+                    FloatTy::F80 => todo!(),
                     FloatTy::F128 => self.unop_float_intrinsic::<Quad>(intrinsic_name, arg)?,
                 };
                 self.write_scalar(out_val, dest)?;
@@ -1360,6 +1361,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             FloatTy::F16 => float_to_int_inner(self, src.to_scalar().to_f16()?, cast_to, round),
             FloatTy::F32 => float_to_int_inner(self, src.to_scalar().to_f32()?, cast_to, round),
             FloatTy::F64 => float_to_int_inner(self, src.to_scalar().to_f64()?, cast_to, round),
+            FloatTy::F80 => todo!(),
             FloatTy::F128 => float_to_int_inner(self, src.to_scalar().to_f128()?, cast_to, round),
         };
 

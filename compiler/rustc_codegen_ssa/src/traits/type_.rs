@@ -20,6 +20,7 @@ pub trait BaseTypeCodegenMethods: BackendTypes {
     fn type_f16(&self) -> Self::Type;
     fn type_f32(&self) -> Self::Type;
     fn type_f64(&self) -> Self::Type;
+    fn type_f80(&self) -> Self::Type;
     fn type_f128(&self) -> Self::Type;
 
     fn type_array(&self, ty: Self::Type, len: u64) -> Self::Type;
@@ -69,6 +70,7 @@ pub trait DerivedTypeCodegenMethods<'tcx>:
             F16 => self.type_f16(),
             F32 => self.type_f32(),
             F64 => self.type_f64(),
+            F80 => self.type_f80(),
             F128 => self.type_f128(),
         }
     }

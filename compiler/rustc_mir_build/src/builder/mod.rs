@@ -1135,6 +1135,8 @@ pub(crate) fn parse_float_into_scalar(
 
             Some(ScalarInt::from(f))
         }
+        // FIXME(f80): needs an apfloat x87 extended-precision parser and `ScalarInt::from::<f80>`.
+        ty::FloatTy::F80 => todo!(),
         // FIXME(f16_f128): When available, compare to the library parser as with `f32` and `f64`
         ty::FloatTy::F128 => {
             let mut f = num.parse::<Quad>().ok()?;

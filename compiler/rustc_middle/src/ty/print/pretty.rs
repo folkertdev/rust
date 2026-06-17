@@ -1838,6 +1838,11 @@ pub trait PrettyPrinter<'tcx>: Printer<'tcx> + fmt::Write {
                     let val = Double::try_from(int).unwrap();
                     write!(self, "{}{}f64", val, if val.is_finite() { "" } else { "_" })?;
                 }
+                ty::FloatTy::F80 => {
+                    // FIXME(f80): this might accept integers that are too large.
+                    let val = Quad::try_from(int).unwrap();
+                    write!(self, "{}{}f80", val, if val.is_finite() { "" } else { "_" })?;
+                }
                 ty::FloatTy::F128 => {
                     let val = Quad::try_from(int).unwrap();
                     write!(self, "{}{}f128", val, if val.is_finite() { "" } else { "_" })?;

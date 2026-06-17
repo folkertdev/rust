@@ -133,6 +133,7 @@ impl<'ll, 'tcx> CodegenCx<'ll, 'tcx> {
             ty::FloatTy::F16 => self.type_f16(),
             ty::FloatTy::F32 => self.type_f32(),
             ty::FloatTy::F64 => self.type_f64(),
+            ty::FloatTy::F80 => self.type_f80(),
             ty::FloatTy::F128 => self.type_f128(),
         }
     }
@@ -220,6 +221,10 @@ impl<'ll, CX: Borrow<SCx<'ll>>> BaseTypeCodegenMethods for GenericCx<'ll, CX> {
 
     fn type_f64(&self) -> &'ll Type {
         unsafe { llvm::LLVMDoubleTypeInContext(self.llcx()) }
+    }
+
+    fn type_f80(&self) -> &'ll Type {
+        unsafe { llvm::LLVMX86FP80TypeInContext(self.llcx()) }
     }
 
     fn type_f128(&self) -> &'ll Type {

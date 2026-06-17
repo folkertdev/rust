@@ -484,6 +484,7 @@ fn wasm_primitive(primitive: Primitive, ptr_type: &'static str) -> &'static str 
         Primitive::Float(float) => match float {
             Float::F16 | Float::F32 => "f32",
             Float::F64 => "f64",
+            Float::F80 => unreachable!(),
             Float::F128 => "i64, i64",
         },
         Primitive::Pointer(_) => ptr_type,

@@ -178,6 +178,7 @@ pub enum FloatTy {
     F16,
     F32,
     F64,
+    F80,
     F128,
 }
 
@@ -187,6 +188,7 @@ impl FloatTy {
             FloatTy::F16 => "f16",
             FloatTy::F32 => "f32",
             FloatTy::F64 => "f64",
+            FloatTy::F80 => "f80",
             FloatTy::F128 => "f128",
         }
     }
@@ -197,6 +199,7 @@ impl FloatTy {
             FloatTy::F16 => sym::f16,
             FloatTy::F32 => sym::f32,
             FloatTy::F64 => sym::f64,
+            FloatTy::F80 => sym::f80,
             FloatTy::F128 => sym::f128,
         }
     }
@@ -206,6 +209,7 @@ impl FloatTy {
             FloatTy::F16 => 16,
             FloatTy::F32 => 32,
             FloatTy::F64 => 64,
+            FloatTy::F80 => 80,
             FloatTy::F128 => 128,
         }
     }

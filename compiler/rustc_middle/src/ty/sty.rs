@@ -606,6 +606,7 @@ impl<'tcx> Ty<'tcx> {
             F16 => tcx.types.f16,
             F32 => tcx.types.f32,
             F64 => tcx.types.f64,
+            F80 => tcx.types.f80,
             F128 => tcx.types.f128,
         }
     }
@@ -2127,6 +2128,7 @@ impl<'tcx> Ty<'tcx> {
                 ty::FloatTy::F16 => Some(sym::f16),
                 ty::FloatTy::F32 => Some(sym::f32),
                 ty::FloatTy::F64 => Some(sym::f64),
+                ty::FloatTy::F80 => Some(sym::f80),
                 ty::FloatTy::F128 => Some(sym::f128),
             },
             ty::Int(f) => match f {

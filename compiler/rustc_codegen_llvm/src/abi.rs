@@ -160,6 +160,7 @@ impl LlvmType for Reg {
                         Float::F16 => cx.type_f16(),
                         Float::F32 => cx.type_f32(),
                         Float::F64 => cx.type_f64(),
+                        Float::F80 => cx.type_f80(),
                         Float::F128 => cx.type_f128(),
                     },
                     Primitive::Pointer(_) => cx.type_ptr(),

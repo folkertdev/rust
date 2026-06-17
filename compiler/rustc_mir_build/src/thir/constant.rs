@@ -98,6 +98,7 @@ pub(crate) fn lit_to_const<'tcx>(
                 ast::FloatTy::F16 => ty::FloatTy::F16,
                 ast::FloatTy::F32 => ty::FloatTy::F32,
                 ast::FloatTy::F64 => ty::FloatTy::F64,
+                ast::FloatTy::F80 => ty::FloatTy::F80,
                 ast::FloatTy::F128 => ty::FloatTy::F128,
             };
             let bits = parse_float_into_scalar(n, fty, neg)?;

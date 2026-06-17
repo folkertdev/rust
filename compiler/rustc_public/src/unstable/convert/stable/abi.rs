@@ -373,6 +373,7 @@ impl<'tcx> Stable<'tcx> for rustc_abi::Float {
             rustc_abi::Float::F16 => FloatLength::F16,
             rustc_abi::Float::F32 => FloatLength::F32,
             rustc_abi::Float::F64 => FloatLength::F64,
+            rustc_abi::Float::F80 => FloatLength::F80,
             rustc_abi::Float::F128 => FloatLength::F128,
         }
     }

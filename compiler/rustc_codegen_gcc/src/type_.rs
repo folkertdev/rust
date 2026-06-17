@@ -172,6 +172,11 @@ impl<'gcc, 'tcx> BaseTypeCodegenMethods for CodegenCx<'gcc, 'tcx> {
         self.double_type
     }
 
+    fn type_f80(&self) -> Type<'gcc> {
+        // gccjit does expose GCC_JIT_TYPE_LONG_DOUBLE, which might work.
+        bug!("unsupported float width 80")
+    }
+
     fn type_f128(&self) -> Type<'gcc> {
         #[cfg(feature = "master")]
         if self.supports_f128_type {
