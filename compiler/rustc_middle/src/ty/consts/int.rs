@@ -3,7 +3,7 @@ use std::num::NonZero;
 
 use rustc_abi::Size;
 use rustc_apfloat::Float;
-use rustc_apfloat::ieee::{Double, Half, Quad, Single};
+use rustc_apfloat::ieee::{Double, Half, Quad, Single, X87DoubleExtended};
 use rustc_data_structures::stable_hash::{StableHash, StableHashCtxt};
 use rustc_serialize::{Decodable, Decoder, Encodable, Encoder};
 
@@ -447,6 +447,11 @@ impl ScalarInt {
     }
 
     #[inline]
+    pub fn to_f80(self) -> X87DoubleExtended {
+        self.to_float()
+    }
+
+    #[inline]
     pub fn to_f128(self) -> Quad {
         self.to_float()
     }
@@ -618,6 +623,21 @@ impl From<ScalarInt> for Quad {
     #[inline]
     fn from(int: ScalarInt) -> Self {
         Self::from_bits(int.to_bits(Size::from_bytes(16)))
+    }
+}
+
+impl From<X87DoubleExtended> for ScalarInt {
+    #[inline]
+    fn from(f: X87DoubleExtended) -> Self {
+        // We trust apfloat to give us properly truncated data.
+        Self { data: f.to_bits(), size: NonZero::new((X87DoubleExtended::BITS / 8) as u8).unwrap() }
+    }
+}
+
+impl From<ScalarInt> for X87DoubleExtended {
+    #[inline]
+    fn from(int: ScalarInt) -> Self {
+        Self::from_bits(int.to_bits(Size::from_bits(X87DoubleExtended::BITS as u64)))
     }
 }
 

@@ -3,7 +3,7 @@ use std::fmt;
 use either::{Either, Left, Right};
 use rustc_abi::{HasDataLayout, Size};
 use rustc_apfloat::Float;
-use rustc_apfloat::ieee::{Double, Half, Quad, Single};
+use rustc_apfloat::ieee::{Double, Half, Quad, Single, X87DoubleExtended};
 use rustc_macros::{StableHash, TyDecodable, TyEncodable};
 
 use super::{
@@ -90,6 +90,13 @@ impl<Prov> From<Quad> for Scalar<Prov> {
     #[inline(always)]
     fn from(f: Quad) -> Self {
         Scalar::from_f128(f)
+    }
+}
+
+impl<Prov> From<X87DoubleExtended> for Scalar<Prov> {
+    #[inline(always)]
+    fn from(f: X87DoubleExtended) -> Self {
+        Scalar::from_f80(f)
     }
 }
 
@@ -220,6 +227,11 @@ impl<Prov> Scalar<Prov> {
 
     #[inline]
     pub fn from_f64(f: Double) -> Self {
+        Scalar::Int(f.into())
+    }
+
+    #[inline]
+    pub fn from_f80(f: X87DoubleExtended) -> Self {
         Scalar::Int(f.into())
     }
 
@@ -455,6 +467,11 @@ impl<'tcx, Prov: Provenance> Scalar<Prov> {
 
     #[inline]
     pub fn to_f64(self) -> InterpResult<'tcx, Double> {
+        self.to_float()
+    }
+
+    #[inline]
+    pub fn to_f80(self) -> InterpResult<'tcx, X87DoubleExtended> {
         self.to_float()
     }
 

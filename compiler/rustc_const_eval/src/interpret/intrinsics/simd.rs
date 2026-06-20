@@ -1,6 +1,6 @@
 use either::Either;
 use rustc_abi::{BackendRepr, Endian};
-use rustc_apfloat::ieee::{Double, Half, Quad, Single};
+use rustc_apfloat::ieee::{Double, Half, Quad, Single, X87DoubleExtended};
 use rustc_apfloat::{Float, Round};
 use rustc_middle::mir::interpret::{InterpErrorKind, Pointer, UndefinedBehaviorInfo};
 use rustc_middle::ty::{FloatTy, ScalarInt, SimdAlign};
@@ -132,7 +132,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                                 FloatTy::F16 => Scalar::from_f16(op.to_f16()?.abs()),
                                 FloatTy::F32 => Scalar::from_f32(op.to_f32()?.abs()),
                                 FloatTy::F64 => Scalar::from_f64(op.to_f64()?.abs()),
-                                FloatTy::F80 => todo!(),
+                                FloatTy::F80 => Scalar::from_f80(op.to_f80()?.abs()),
                                 FloatTy::F128 => Scalar::from_f128(op.to_f128()?.abs()),
                             }
                         }
@@ -149,7 +149,9 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                                 FloatTy::F16 => self.float_round::<Half>(op, rounding)?,
                                 FloatTy::F32 => self.float_round::<Single>(op, rounding)?,
                                 FloatTy::F64 => self.float_round::<Double>(op, rounding)?,
-                                FloatTy::F80 => todo!(),
+                                FloatTy::F80 => {
+                                    self.float_round::<X87DoubleExtended>(op, rounding)?
+                                }
                                 FloatTy::F128 => self.float_round::<Quad>(op, rounding)?,
                             }
                         }
@@ -746,7 +748,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                         FloatTy::F16 => self.float_muladd::<Half>(a, b, c, typ)?,
                         FloatTy::F32 => self.float_muladd::<Single>(a, b, c, typ)?,
                         FloatTy::F64 => self.float_muladd::<Double>(a, b, c, typ)?,
-                        FloatTy::F80 => todo!(),
+                        FloatTy::F80 => self.float_muladd::<X87DoubleExtended>(a, b, c, typ)?,
                         FloatTy::F128 => self.float_muladd::<Quad>(a, b, c, typ)?,
                     };
                     self.write_scalar(val, &dest)?;
@@ -830,7 +832,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             FloatTy::F16 => self.float_minmax::<Half>(left, right, op)?,
             FloatTy::F32 => self.float_minmax::<Single>(left, right, op)?,
             FloatTy::F64 => self.float_minmax::<Double>(left, right, op)?,
-            FloatTy::F80 => todo!(),
+            FloatTy::F80 => self.float_minmax::<X87DoubleExtended>(left, right, op)?,
             FloatTy::F128 => self.float_minmax::<Quad>(left, right, op)?,
         })
     }

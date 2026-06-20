@@ -7,7 +7,7 @@ mod simd;
 use std::assert_matches;
 
 use rustc_abi::{FieldIdx, HasDataLayout, Size, VariantIdx};
-use rustc_apfloat::ieee::{Double, Half, Quad, Single};
+use rustc_apfloat::ieee::{Double, Half, Quad, Single, X87DoubleExtended};
 use rustc_ast::{IntTy, UintTy};
 use rustc_middle::mir::interpret::{CTFE_ALLOC_SALT, read_target_uint, write_target_uint};
 use rustc_middle::mir::{self, BinOp, ConstValue, NonDivergingIntrinsic};
@@ -605,7 +605,9 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     FloatTy::F16 => self.unop_float_intrinsic::<Half>(intrinsic_name, arg)?,
                     FloatTy::F32 => self.unop_float_intrinsic::<Single>(intrinsic_name, arg)?,
                     FloatTy::F64 => self.unop_float_intrinsic::<Double>(intrinsic_name, arg)?,
-                    FloatTy::F80 => todo!(),
+                    FloatTy::F80 => {
+                        self.unop_float_intrinsic::<X87DoubleExtended>(intrinsic_name, arg)?
+                    }
                     FloatTy::F128 => self.unop_float_intrinsic::<Quad>(intrinsic_name, arg)?,
                 };
                 self.write_scalar(out_val, dest)?;
@@ -1361,7 +1363,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             FloatTy::F16 => float_to_int_inner(self, src.to_scalar().to_f16()?, cast_to, round),
             FloatTy::F32 => float_to_int_inner(self, src.to_scalar().to_f32()?, cast_to, round),
             FloatTy::F64 => float_to_int_inner(self, src.to_scalar().to_f64()?, cast_to, round),
-            FloatTy::F80 => todo!(),
+            FloatTy::F80 => float_to_int_inner(self, src.to_scalar().to_f80()?, cast_to, round),
             FloatTy::F128 => float_to_int_inner(self, src.to_scalar().to_f128()?, cast_to, round),
         };
 

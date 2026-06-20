@@ -435,8 +435,7 @@ impl<'tcx> ConstToPat<'tcx> {
                     ty::FloatTy::F16 => v.to_f16().is_nan(),
                     ty::FloatTy::F32 => v.to_f32().is_nan(),
                     ty::FloatTy::F64 => v.to_f64().is_nan(),
-                    // FIXME(f80): needs apfloat x87 extended-precision support and `ScalarInt::to_f80`.
-                    ty::FloatTy::F80 => todo!(),
+                    ty::FloatTy::F80 => v.to_f80().is_nan(),
                     ty::FloatTy::F128 => v.to_f128().is_nan(),
                 };
                 if is_nan {
