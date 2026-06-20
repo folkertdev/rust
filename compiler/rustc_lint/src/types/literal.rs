@@ -428,8 +428,7 @@ pub(crate) fn lint_literal<'tcx>(
                 ty::FloatTy::F16 => float_is_infinite::<HalfS>(v),
                 ty::FloatTy::F32 => float_is_infinite::<SingleS>(v),
                 ty::FloatTy::F64 => float_is_infinite::<DoubleS>(v),
-                // FIXME(f80): needs an apfloat x87 extended-precision semantics type.
-                ty::FloatTy::F80 => todo!(),
+                ty::FloatTy::F80 => bug!("there are no x87_f80 literals"),
                 ty::FloatTy::F128 => float_is_infinite::<QuadS>(v),
             };
 

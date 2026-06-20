@@ -224,9 +224,7 @@ language_item_table! {
     VaArgSafe,               sym::va_arg_safe,         va_arg_safe,                Target::Trait,          GenericRequirement::None;
     VaList,                  sym::va_list,             va_list,                    Target::Struct,         GenericRequirement::None;
 
-    // The x87 80-bit extended-precision float, exposed as `core::arch::{x86,x86_64}::f80`.
-    // A type path resolving to this item is lowered to the primitive `ty::Float(FloatTy::F80)`.
-    F80,                     sym::f80,                 f80_type,                   Target::Enum,           GenericRequirement::None;
+    F80,                     sym::f80,                 f80_type,                   Target::Struct,         GenericRequirement::None;
 
     Deref,                   sym::deref,               deref_trait,                Target::Trait,          GenericRequirement::Exact(0);
     DerefMut,                sym::deref_mut,           deref_mut_trait,            Target::Trait,          GenericRequirement::Exact(0);

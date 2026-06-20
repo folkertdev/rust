@@ -391,7 +391,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                         self.binary_float_op(bin_op, layout, left.to_f64()?, right.to_f64()?)
                     }
                     FloatTy::F80 => {
-                        todo!();
+                        self.binary_float_op(bin_op, layout, left.to_f80()?, right.to_f80()?)
                     }
                     FloatTy::F128 => {
                         self.binary_float_op(bin_op, layout, left.to_f128()?, right.to_f128()?)

@@ -108,6 +108,21 @@ impl<T: PointeeSized> Copy for *const T {}
 impl<T: PointeeSized> Copy for *mut T {}
 impl<T: Copy, const N: usize> Copy for [T; N] {}
 
+pub mod arch {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub mod x86 {
+        #[lang = "f80"]
+        pub struct f80([u8; 10]);
+
+        impl crate::Copy for f80 {}
+    }
+
+    #[cfg(any(target_arch = "x86_64"))]
+    pub mod x86_64 {
+        pub use super::x86::*;
+    }
+}
+
 #[lang = "phantom_data"]
 pub struct PhantomData<T: PointeeSized>;
 impl<T: PointeeSized> Copy for PhantomData<T> {}

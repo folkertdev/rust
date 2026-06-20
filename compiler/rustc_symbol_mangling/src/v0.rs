@@ -469,6 +469,7 @@ impl<'tcx> Printer<'tcx> for V0SymbolMangler<'tcx> {
             ty::Float(FloatTy::F16) => "C3f16",
             ty::Float(FloatTy::F32) => "f",
             ty::Float(FloatTy::F64) => "d",
+            ty::Float(FloatTy::F80) => "C3f80",
             ty::Float(FloatTy::F128) => "C4f128",
             ty::Never => "z",
 

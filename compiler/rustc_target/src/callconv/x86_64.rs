@@ -2,7 +2,7 @@
 // https://github.com/jckarter/clay/blob/db0bd2702ab0b6e48965cd85f8859bbd5f60e48e/compiler/externals.cpp
 
 use rustc_abi::{
-    BackendRepr, HasDataLayout, Primitive, Reg, RegKind, Size, TyAbiInterface, TyAndLayout,
+    BackendRepr, Float, HasDataLayout, Primitive, Reg, RegKind, Size, TyAbiInterface, TyAndLayout,
     Variants,
 };
 
@@ -17,6 +17,7 @@ enum Class {
     Int,
     Sse,
     SseUp,
+    X87, // We don't need X87UP for our logic.
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -54,6 +55,7 @@ where
         let mut c = match layout.backend_repr {
             BackendRepr::Scalar(scalar) => match scalar.primitive() {
                 Primitive::Int(..) | Primitive::Pointer(_) => Class::Int,
+                Primitive::Float(Float::F80) => Class::X87,
                 Primitive::Float(_) => Class::Sse,
             },
 
@@ -104,6 +106,13 @@ where
 
     let mut cls = [None; MAX_EIGHTBYTES];
     classify(cx, arg.layout, &mut cls, Size::ZERO)?;
+
+    // A bare `f80` scalar is passed directly (in memory for args, in `st0` for returns).
+    // But an x87 field in an aggregate makes the whole aggregate be passed in memory.
+    if arg.layout.is_aggregate() && cls.iter().any(|c| c == &Some(Class::X87)) {
+        return Err(Memory);
+    }
+
     if n > 2 {
         if cls[0] != Some(Class::Sse) {
             return Err(Memory);

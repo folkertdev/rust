@@ -13,7 +13,138 @@ mod macros;
 #[lang = "f80"]
 #[unstable(feature = "x86_f80", issue = "none")]
 #[allow(non_camel_case_types)]
-pub enum f80 {}
+pub struct f80([u8; 10]);
+
+impl f80 {
+    const BITS: u32 = 80;
+
+    /// Not a Number (NaN).
+    #[unstable(feature = "x86_f80", issue = "none")]
+    pub const NAN: f80 = f64::NAN as f80;
+    /// Positive infinity (+∞).
+    #[unstable(feature = "x86_f80", issue = "none")]
+    pub const INFINITY: f80 = f64::INFINITY as f80;
+    /// Negative infinity (−∞).
+    #[unstable(feature = "x86_f80", issue = "none")]
+    pub const NEG_INFINITY: f80 = f64::NEG_INFINITY as f80;
+    /// The additive identity, `0.0`.
+    #[unstable(feature = "x86_f80", issue = "none")]
+    pub const ZERO: f80 = 0.0_f64 as f80;
+    /// The multiplicative identity, `1.0`.
+    #[unstable(feature = "x86_f80", issue = "none")]
+    pub const ONE: f80 = 1.0_f64 as f80;
+
+    /// Returns the memory representation of this `f80` as a byte array in native byte order.
+    ///
+    /// The 80-bit value always occupies 10 bytes (`Self::BITS / 8`). Note that `size_of::<f80>()`
+    /// is larger (16 on x86-64, 12 on x86) due to alignment padding, which is *not* part of the
+    /// representation returned here.
+    #[unstable(feature = "x86_f80", issue = "none")]
+    #[inline]
+    pub const fn to_ne_bytes(self) -> [u8; 10] {
+        // SAFETY: `transmute_copy` reads `size_of::<[u8; 10]>() == 10` bytes from the `f80`, i.e.
+        // exactly the value bytes, never the alignment padding that follows them.
+        unsafe { crate::mem::transmute_copy::<f80, [u8; 10]>(&self) }
+    }
+
+    /// Returns the memory representation as a byte array in little-endian byte order.
+    #[unstable(feature = "x86_f80", issue = "none")]
+    #[inline]
+    pub const fn to_le_bytes(self) -> [u8; 10] {
+        // `f80` only exists on x86, which is little-endian, so native order is little-endian.
+        self.to_ne_bytes()
+    }
+
+    /// Returns the memory representation as a byte array in big-endian byte order.
+    #[unstable(feature = "x86_f80", issue = "none")]
+    #[inline]
+    pub const fn to_be_bytes(self) -> [u8; 10] {
+        let ne = self.to_ne_bytes();
+        let mut be = [0u8; 10];
+        let mut i = 0;
+        while i < 10 {
+            be[i] = ne[9 - i];
+            i += 1;
+        }
+        be
+    }
+
+    /// Creates an `f80` from its representation as a byte array in native byte order.
+    #[unstable(feature = "x86_f80", issue = "none")]
+    #[inline]
+    pub const fn from_ne_bytes(bytes: [u8; 10]) -> f80 {
+        let mut val = crate::mem::MaybeUninit::<f80>::uninit();
+        // SAFETY: every bit pattern of the 10 value bytes is a valid `f80`. We initialize exactly
+        // those leading 10 bytes; the remaining alignment padding is allowed to stay uninitialized.
+        unsafe {
+            crate::ptr::copy_nonoverlapping(
+                (&bytes as *const [u8; 10]).cast::<u8>(),
+                val.as_mut_ptr().cast::<u8>(),
+                10,
+            );
+            val.assume_init()
+        }
+    }
+
+    /// Creates an `f80` from its representation as a byte array in little-endian byte order.
+    #[unstable(feature = "x86_f80", issue = "none")]
+    #[inline]
+    pub const fn from_le_bytes(bytes: [u8; 10]) -> f80 {
+        f80::from_ne_bytes(bytes)
+    }
+
+    /// Creates an `f80` from its representation as a byte array in big-endian byte order.
+    #[unstable(feature = "x86_f80", issue = "none")]
+    #[inline]
+    pub const fn from_be_bytes(bytes: [u8; 10]) -> f80 {
+        let mut ne = [0u8; 10];
+        let mut i = 0;
+        while i < 10 {
+            ne[i] = bytes[9 - i];
+            i += 1;
+        }
+        f80::from_ne_bytes(ne)
+    }
+}
+
+#[unstable(feature = "x86_f80", issue = "none")]
+impl Clone for f80 {
+    #[inline]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+#[unstable(feature = "x86_f80", issue = "none")]
+impl Copy for f80 {}
+
+// `f80` only implements `PartialEq`/`PartialOrd` (and, like other floats, neither `Eq` nor `Ord`,
+// because of NaN). These mirror the primitive-float impls in `core`: the `==`/`<`/`<=`/... here are
+// the compiler's builtin scalar comparisons, not recursive trait calls.
+#[unstable(feature = "x86_f80", issue = "none")]
+impl PartialEq for f80 {
+    #[inline]
+    fn eq(&self, other: &f80) -> bool {
+        *self == *other
+    }
+    #[inline]
+    fn ne(&self, other: &f80) -> bool {
+        *self != *other
+    }
+}
+
+#[unstable(feature = "x86_f80", issue = "none")]
+impl PartialOrd for f80 {
+    #[inline]
+    fn partial_cmp(&self, other: &f80) -> Option<crate::cmp::Ordering> {
+        use crate::cmp::Ordering;
+        match ((*self) <= (*other), (*self) >= (*other)) {
+            (false, false) => None,
+            (false, true) => Some(Ordering::Greater),
+            (true, false) => Some(Ordering::Less),
+            (true, true) => Some(Ordering::Equal),
+        }
+    }
+}
 
 types! {
     #![stable(feature = "simd_x86", since = "1.27.0")]

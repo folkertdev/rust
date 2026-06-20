@@ -1,5 +1,5 @@
 use rustc_abi::{
-    AddressSpace, Align, BackendRepr, HasDataLayout, Primitive, Reg, RegKind, TyAndLayout,
+    AddressSpace, Align, BackendRepr, Float, HasDataLayout, Primitive, Reg, RegKind, TyAndLayout,
 };
 
 use crate::callconv::{ArgAttribute, FnAbi, PassMode, TyAbiInterface};
@@ -209,6 +209,13 @@ where
     // registers will quiet signalling NaNs. Also avoid using SSE registers since they
     // are not always available (depending on target features).
     if !fn_abi.ret.is_ignore() {
+        if let BackendRepr::Scalar(s) = fn_abi.ret.layout.backend_repr
+            && s.primitive() == Primitive::Float(Float::F80)
+        {
+            // x87_f80 is returned via the `st0` x87 register.
+            return;
+        }
+
         let has_float = match fn_abi.ret.layout.backend_repr {
             BackendRepr::Scalar(s) => matches!(s.primitive(), Primitive::Float(_)),
             BackendRepr::ScalarPair(s1, s2) => {
