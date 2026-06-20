@@ -287,3 +287,88 @@ impl Debug for f128 {
         write!(f, "{:#034x}", self.to_bits())
     }
 }
+
+/// Formats the x87 80-bit extended float (`core::arch::{x86,x86_64}::f80`) into its shortest
+/// decimal form, given its 80-bit little-endian bit pattern in the low bits of `bits`.
+///
+/// `f80` cannot implement [`flt2dec::DecodableFloat`] — the generic decoder assumes an implicit
+/// integer bit, while x87 stores it explicitly — so it decodes itself here. It also can't use the
+/// grisu fast path (whose mantissa must stay below `2^61`), so it always uses the arbitrary
+/// precision dragon strategy. This is reachable because `flt2dec`'s mantissa was widened to `u128`.
+pub(crate) fn f80_to_shortest_str(fmt: &mut Formatter<'_>, bits: u128) -> Result {
+    let sign = match fmt.sign_plus() {
+        false => flt2dec::Sign::Minus,
+        true => flt2dec::Sign::MinusPlus,
+    };
+    let (negative, full_decoded) = decode_f80(bits);
+    // `f80` carries up to 21 significant decimal digits, more than `MAX_SIG_DIGITS` (sized for f64).
+    let mut buf = [MaybeUninit::<u8>::uninit(); 24];
+    let mut parts = [MaybeUninit::<numfmt::Part<'_>>::uninit(); 4];
+    let formatted = flt2dec::to_shortest_str_decoded(
+        flt2dec::strategy::dragon::format_shortest,
+        negative,
+        full_decoded,
+        sign,
+        0,
+        &mut buf,
+        &mut parts,
+    );
+    // SAFETY: `to_shortest_str_decoded` and `format_shortest` produce only ASCII characters.
+    unsafe { fmt.pad_formatted_parts(&formatted) }
+}
+
+/// Decodes an `f80` from its 80-bit (little-endian) representation into a sign and `FullDecoded`,
+/// mirroring [`flt2dec::decode`] but for the x87 layout (explicit integer bit, 15-bit exponent).
+fn decode_f80(bits: u128) -> (bool, flt2dec::FullDecoded) {
+    use flt2dec::{Decoded, FullDecoded};
+
+    const EXP_BIAS: i16 = 16383;
+
+    let negative = (bits >> 79) & 1 == 1;
+    let exp_field = ((bits >> 64) & 0x7fff) as i16;
+    // The full 64-bit significand, including the explicit integer (most significant) bit.
+    let significand = (bits & 0xffff_ffff_ffff_ffff) as u64;
+    let even = significand & 1 == 0;
+
+    let full = if exp_field == 0x7fff {
+        // An integer bit set over a zero fraction is infinity; everything else is a NaN.
+        if significand == 0x8000_0000_0000_0000 { FullDecoded::Infinite } else { FullDecoded::Nan }
+    } else if exp_field == 0 {
+        if significand == 0 {
+            FullDecoded::Zero
+        } else {
+            // Subnormal: value = significand * 2^(1 - EXP_BIAS - 63). The `<< 1` lets the half-ULP
+            // error bounds be expressed as `minus`/`plus` of 1.
+            FullDecoded::Finite(Decoded {
+                mant: (significand as u128) << 1,
+                minus: 1,
+                plus: 1,
+                exp: (1 - EXP_BIAS - 63) - 1,
+                inclusive: even,
+            })
+        }
+    } else {
+        // Normal: value = significand * 2^(exp_field - EXP_BIAS - 63).
+        let exp = exp_field - EXP_BIAS - 63;
+        if significand == 0x8000_0000_0000_0000 {
+            // A power of two: the gap to the previous value is half the gap to the next one.
+            FullDecoded::Finite(Decoded {
+                mant: (significand as u128) << 2,
+                minus: 1,
+                plus: 2,
+                exp: exp - 2,
+                inclusive: even,
+            })
+        } else {
+            FullDecoded::Finite(Decoded {
+                mant: (significand as u128) << 1,
+                minus: 1,
+                plus: 1,
+                exp: exp - 1,
+                inclusive: even,
+            })
+        }
+    };
+
+    (negative, full)
+}

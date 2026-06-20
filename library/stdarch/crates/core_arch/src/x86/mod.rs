@@ -105,6 +105,35 @@ impl f80 {
         }
         f80::from_ne_bytes(ne)
     }
+
+    /// The 80-bit value as the low bits of a `u128` (the high 48 bits are zero).
+    #[inline]
+    const fn bits(self) -> u128 {
+        let bytes = self.to_ne_bytes();
+        let mut bits = 0u128;
+        let mut i = 0;
+        while i < 10 {
+            bits |= (bytes[i] as u128) << (i * 8);
+            i += 1;
+        }
+        bits
+    }
+}
+
+#[unstable(feature = "x86_f80", issue = "none")]
+impl crate::fmt::Debug for f80 {
+    #[inline]
+    fn fmt(&self, f: &mut crate::fmt::Formatter<'_>) -> crate::fmt::Result {
+        crate::fmt::float::f80_to_shortest_str(f, self.bits())
+    }
+}
+
+#[unstable(feature = "x86_f80", issue = "none")]
+impl crate::fmt::Display for f80 {
+    #[inline]
+    fn fmt(&self, f: &mut crate::fmt::Formatter<'_>) -> crate::fmt::Result {
+        crate::fmt::float::f80_to_shortest_str(f, self.bits())
+    }
 }
 
 #[unstable(feature = "x86_f80", issue = "none")]

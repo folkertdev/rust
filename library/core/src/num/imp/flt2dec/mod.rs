@@ -355,7 +355,7 @@ fn determine_sign(sign: Sign, decoded: &FullDecoded, negative: bool) -> &'static
 /// There should be at least 4 parts available, due to the worst case like
 /// `[+][0.][0000][2][0000]` with `frac_digits = 10`.
 pub fn to_shortest_str<'a, T, F>(
-    mut format_shortest: F,
+    format_shortest: F,
     v: T,
     sign: Sign,
     frac_digits: usize,
@@ -366,10 +366,28 @@ where
     T: DecodableFloat,
     F: FnMut(&Decoded, &'a mut [MaybeUninit<u8>]) -> (&'a [u8], i16),
 {
+    let (negative, full_decoded) = decode(v);
+    to_shortest_str_decoded(format_shortest, negative, full_decoded, sign, frac_digits, buf, parts)
+}
+
+/// Like [`to_shortest_str`], but takes an already-`decode`d value. This lets float types that
+/// cannot implement [`DecodableFloat`] (such as the x87 `f80`, whose explicit integer bit the
+/// generic `decode` does not model) reuse the same formatting by decoding themselves first.
+pub fn to_shortest_str_decoded<'a, F>(
+    mut format_shortest: F,
+    negative: bool,
+    full_decoded: FullDecoded,
+    sign: Sign,
+    frac_digits: usize,
+    buf: &'a mut [MaybeUninit<u8>],
+    parts: &'a mut [MaybeUninit<Part<'a>>],
+) -> Formatted<'a>
+where
+    F: FnMut(&Decoded, &'a mut [MaybeUninit<u8>]) -> (&'a [u8], i16),
+{
     assert!(parts.len() >= 4);
     assert!(buf.len() >= MAX_SIG_DIGITS);
 
-    let (negative, full_decoded) = decode(v);
     let sign = determine_sign(sign, &full_decoded, negative);
     match full_decoded {
         FullDecoded::Nan => {

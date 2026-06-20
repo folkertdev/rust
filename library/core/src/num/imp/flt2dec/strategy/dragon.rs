@@ -135,9 +135,9 @@ pub fn format_shortest<'a>(
     // - `v = mant / scale`
     // - `low = (mant - minus) / scale`
     // - `high = (mant + plus) / scale`
-    let mut mant = Big::from_u64(d.mant);
-    let mut minus = Big::from_u64(d.minus);
-    let mut plus = Big::from_u64(d.plus);
+    let mut mant = Big::from_u128(d.mant);
+    let mut minus = Big::from_u128(d.minus);
+    let mut plus = Big::from_u128(d.plus);
     let mut scale = Big::from_small(1);
     if d.exp < 0 {
         scale.mul_pow2(-d.exp as usize);
@@ -276,7 +276,7 @@ pub fn format_exact<'a>(
     let mut k = estimate_scaling_factor(d.mant, d.exp);
 
     // `v = mant / scale`.
-    let mut mant = Big::from_u64(d.mant);
+    let mut mant = Big::from_u128(d.mant);
     let mut scale = Big::from_small(1);
     if d.exp < 0 {
         scale.mul_pow2(-d.exp as usize);

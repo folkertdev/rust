@@ -13,11 +13,15 @@ use crate::num::imp::FloatExt;
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Decoded {
     /// The scaled mantissa.
-    pub mant: u64,
+    ///
+    /// This is `u128` rather than `u64` because `f80`'s 64-bit significand, once scaled by the
+    /// `<< 1` shift `decode` applies, no longer fits in a `u64`. For all other float types it
+    /// stays well within `u64`.
+    pub mant: u128,
     /// The lower error range.
-    pub minus: u64,
+    pub minus: u128,
     /// The upper error range.
-    pub plus: u64,
+    pub plus: u128,
     /// The shared exponent in base 2.
     pub exp: i16,
     /// True when the error range is inclusive.
@@ -77,7 +81,13 @@ pub fn decode<T: DecodableFloat>(v: T) -> (/*negative?*/ bool, FullDecoded) {
             // neighbors: (mant - 2, exp) -- (mant, exp) -- (mant + 2, exp)
             // Float::integer_decode always preserves the exponent,
             // so the mantissa is scaled for subnormals.
-            FullDecoded::Finite(Decoded { mant, minus: 1, plus: 1, exp, inclusive: even })
+            FullDecoded::Finite(Decoded {
+                mant: mant as u128,
+                minus: 1,
+                plus: 1,
+                exp,
+                inclusive: even,
+            })
         }
         FpCategory::Normal => {
             let minnorm = <T as DecodableFloat>::min_pos_norm_value().integer_decode();
@@ -85,7 +95,7 @@ pub fn decode<T: DecodableFloat>(v: T) -> (/*negative?*/ bool, FullDecoded) {
                 // neighbors: (maxmant, exp - 1) -- (minnormmant, exp) -- (minnormmant + 1, exp)
                 // where maxmant = minnormmant * 2 - 1
                 FullDecoded::Finite(Decoded {
-                    mant: mant << 2,
+                    mant: (mant as u128) << 2,
                     minus: 1,
                     plus: 2,
                     exp: exp - 2,
@@ -94,7 +104,7 @@ pub fn decode<T: DecodableFloat>(v: T) -> (/*negative?*/ bool, FullDecoded) {
             } else {
                 // neighbors: (mant - 1, exp) -- (mant, exp) -- (mant + 1, exp)
                 FullDecoded::Finite(Decoded {
-                    mant: mant << 1,
+                    mant: (mant as u128) << 1,
                     minus: 1,
                     plus: 1,
                     exp: exp - 1,

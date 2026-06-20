@@ -177,9 +177,10 @@ pub fn format_shortest_opt<'a>(
     assert!(d.mant + d.plus < (1 << 61)); // we need at least three bits of additional precision
 
     // start with the normalized values with the shared exponent
-    let plus = Fp { f: d.mant + d.plus, e: d.exp }.normalize();
-    let minus = Fp { f: d.mant - d.minus, e: d.exp }.normalize_to(plus.e);
-    let v = Fp { f: d.mant, e: d.exp }.normalize_to(plus.e);
+    // (the `as u64` casts are lossless: the assert above bounds `d.mant + d.plus` below `2^61`)
+    let plus = Fp { f: (d.mant + d.plus) as u64, e: d.exp }.normalize();
+    let minus = Fp { f: (d.mant - d.minus) as u64, e: d.exp }.normalize_to(plus.e);
+    let v = Fp { f: d.mant as u64, e: d.exp }.normalize_to(plus.e);
 
     // find any `cached = 10^minusk` such that `ALPHA <= minusk + plus.e + 64 <= GAMMA`.
     // since `plus` is normalized, this means `2^(62 + ALPHA) <= plus * cached < 2^(64 + GAMMA)`;
@@ -480,7 +481,8 @@ pub fn format_exact_opt<'a>(
     assert!(!buf.is_empty());
 
     // normalize and scale `v`.
-    let v = Fp { f: d.mant, e: d.exp }.normalize();
+    // (the `as u64` cast is lossless: the assert above bounds `d.mant` below `2^61`)
+    let v = Fp { f: d.mant as u64, e: d.exp }.normalize();
     let (minusk, cached) = cached_power(ALPHA - v.e - 64, GAMMA - v.e - 64);
     let v = v.mul(cached);
 

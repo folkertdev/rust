@@ -106,6 +106,18 @@ macro_rules! define_bignum {
                 $name { size: sz, base }
             }
 
+            /// Makes a bignum from a `u128` value.
+            pub fn from_u128(mut v: u128) -> $name {
+                let mut base = [0; $n];
+                let mut sz = 0;
+                while v > 0 {
+                    base[sz] = v as $ty;
+                    v >>= <$ty>::BITS;
+                    sz += 1;
+                }
+                $name { size: sz, base }
+            }
+
             /// Returns the internal digits as a slice `[a, b, c, ...]` such that the numeric
             /// value is `a + b * 2^W + c * 2^(2W) + ...` where `W` is the number of bits in
             /// the digit type.

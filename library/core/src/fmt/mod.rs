@@ -12,8 +12,10 @@ use crate::ptr::NonNull;
 use crate::{iter, mem, result, str};
 
 mod builders;
+// `pub(crate)` so the `f80` formatting helper (`float::f80_to_shortest_str`) is reachable from the
+// `core_arch` `f80` `Display`/`Debug` impls, which live outside the `fmt` module.
 #[cfg(not(no_fp_fmt_parse))]
-mod float;
+pub(crate) mod float;
 #[cfg(no_fp_fmt_parse)]
 mod nofloat;
 mod num;

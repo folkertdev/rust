@@ -102,4 +102,29 @@ fn main() {
     let one_le: [u8; 10] = [0, 0, 0, 0, 0, 0, 0, 0x80, 0xFF, 0x3F];
     assert_eq!(f80::ONE.to_le_bytes(), one_le);
     assert_eq!(f80::from_le_bytes(one_le) as f64, 1.0);
+
+    // Display / ToString / Debug — shortest decimal via the (now `u128`-wide) flt2dec dragon path.
+    assert_eq!(f80::ZERO.to_string(), "0");
+    assert_eq!(f80::ONE.to_string(), "1");
+    assert_eq!((1.5_f64 as f80).to_string(), "1.5");
+    assert_eq!((2.5_f64 as f80).to_string(), "2.5");
+    assert_eq!((-0.25_f64 as f80).to_string(), "-0.25");
+    assert_eq!(format!("{}", f80::INFINITY), "inf");
+    assert_eq!(format!("{}", f80::NEG_INFINITY), "-inf");
+    assert_eq!(format!("{}", f80::NAN), "NaN");
+    assert_eq!(format!("{:?}", f80::ONE), "1");
+    assert_eq!(format!("{:+}", f80::ONE), "+1");
+
+    // More precision than `f64`: `1 + 2^-63` rounds to exactly `1.0` as an `f64`, but `f80` keeps
+    // it, and the formatter shows the extra digits.
+    let one_plus_eps = f80::from_le_bytes([1, 0, 0, 0, 0, 0, 0, 0x80, 0xFF, 0x3F]);
+    assert!(one_plus_eps != f80::ONE);
+    assert!(one_plus_eps.to_string().starts_with("1.0000000000000000"));
+
+    // Larger range than `f64`: `2^1024` overflows `f64` to infinity but is finite as `f80`.
+    // Display uses fixed-point (like the other floats), so it is a ~309-digit integer.
+    let two_pow_1024 = f80::from_le_bytes([0, 0, 0, 0, 0, 0, 0, 0x80, 0xFF, 0x43]);
+    let s = two_pow_1024.to_string();
+    assert!(s.starts_with("179"));
+    assert!(s.len() > 300);
 }
