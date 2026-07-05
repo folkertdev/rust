@@ -199,6 +199,14 @@ impl<'a> Visitor<'a> for PostExpansionVisitor<'a> {
                                 "SIMD types are experimental and possibly buggy"
                             );
                         }
+                        if item.has_name(sym::complex) {
+                            gate!(
+                                self,
+                                repr_complex,
+                                attr.span,
+                                "`repr(complex)` is experimental"
+                            );
+                        }
                     }
                 }
             }

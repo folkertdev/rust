@@ -1699,6 +1699,7 @@ symbols! {
         repr128,
         repr_align,
         repr_align_enum,
+        repr_complex,
         repr_packed,
         repr_simd,
         repr_transparent,

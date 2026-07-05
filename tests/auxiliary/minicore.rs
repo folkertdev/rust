@@ -30,6 +30,7 @@
     decl_macro,
     f16,
     f128,
+    repr_complex,
     transparent_unions,
     asm_experimental_arch,
     unboxed_closures
@@ -388,6 +389,17 @@ pub mod hint {
 
         unsafe { black_box(dummy) }
     }
+}
+
+pub mod num {
+    #[lang = "complex"]
+    #[repr(complex)]
+    pub struct Complex<T> {
+        pub re: T,
+        pub im: T,
+    }
+
+    impl<T: super::Copy> super::Copy for Complex<T> {}
 }
 
 #[lang = "c_void"]

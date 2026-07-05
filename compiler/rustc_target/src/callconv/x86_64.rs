@@ -244,7 +244,18 @@ where
                 // split into sized chunks passed individually
                 if arg.layout.is_aggregate() {
                     let size = arg.layout.size;
-                    arg.cast_to(cast_target(cls, size));
+                    // A floating-point `_Complex` whose real and imaginary parts fit in a single
+                    // eightbyte is passed by clang as a `<2 x component>` vector, not a scalar.
+                    if arg.layout.is_complex()
+                        && size.bytes() <= 8
+                        && let BackendRepr::Scalar(scalar) = arg.layout.field(cx, 0).backend_repr
+                        && let Primitive::Float(_) = scalar.primitive()
+                    {
+                        let kind = RegKind::Vector { hint_vector_elem: scalar.primitive() };
+                        arg.cast_to(Reg { kind, size });
+                    } else {
+                        arg.cast_to(cast_target(cls, size));
+                    }
                 } else if is_arg || cx.target_spec().is_like_darwin {
                     arg.extend_integer_width_to(32);
                 }
