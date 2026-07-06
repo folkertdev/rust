@@ -20,16 +20,30 @@ const TARGETS: &[(&str, &str, &[&str], &str)] = &[
     ("WINDOWS_GNU", "x86_64-pc-windows-gnu", &[], "x86_64-pc-windows-gnu"),
     ("AARCH64", "aarch64-unknown-linux-gnu", &[], "aarch64-unknown-linux-gnu"),
     ("AARCH64_DARWIN", "aarch64-apple-darwin", &[], "aarch64-apple-darwin"),
+    ("AARCH64_MSVC", "aarch64-pc-windows-msvc", &[], "aarch64-pc-windows-msvc"),
+    ("ARM64EC", "arm64ec-pc-windows-msvc", &[], "arm64ec-pc-windows-msvc"),
     ("ARM", "arm-unknown-linux-gnueabihf", &[], "arm-unknown-linux-gnueabihf"),
     ("RISCV64", "riscv64-unknown-linux-gnu", &["-march=rv64gc"], "riscv64gc-unknown-linux-gnu"),
     ("RISCV32", "riscv32-unknown-linux-gnu", &["-march=rv32gc"], "riscv32gc-unknown-linux-gnu"),
     ("S390X", "s390x-unknown-linux-gnu", &[], "s390x-unknown-linux-gnu"),
     ("POWERPC64LE", "powerpc64le-unknown-linux-gnu", &[], "powerpc64le-unknown-linux-gnu"),
+    ("POWERPC64", "powerpc64-unknown-linux-gnu", &["-mabi=elfv1"], "powerpc64-unknown-linux-gnu"),
+    ("AIX", "powerpc64-ibm-aix", &[], "powerpc64-ibm-aix"),
     ("POWERPC", "powerpc-unknown-linux-gnu", &[], "powerpc-unknown-linux-gnu"),
     ("SPARC64", "sparc64-unknown-linux-gnu", &[], "sparc64-unknown-linux-gnu"),
     ("MIPS64EL", "mips64el-unknown-linux-gnuabi64", &[], "mips64el-unknown-linux-gnuabi64"),
     ("MIPS", "mips-unknown-linux-gnu", &[], "mips-unknown-linux-gnu"),
     ("WASM32", "wasm32-unknown-unknown", &[], "wasm32-unknown-unknown"),
+    ("WASM64", "wasm64-unknown-unknown", &[], "wasm64-unknown-unknown"),
+    ("LOONGARCH64", "loongarch64-unknown-linux-gnu", &[], "loongarch64-unknown-linux-gnu"),
+    ("LOONGARCH32", "loongarch32-unknown-none", &[], "loongarch32-unknown-none"),
+    ("SPARC", "sparc-unknown-linux-gnu", &[], "sparc-unknown-linux-gnu"),
+    ("WIN32_MSVC", "i686-pc-windows-msvc", &[], "i686-pc-windows-msvc"),
+    ("WIN32_GNU", "i686-pc-windows-gnu", &[], "i686-pc-windows-gnu"),
+    ("NVPTX", "nvptx64-nvidia-cuda", &[], "nvptx64-nvidia-cuda"),
+    ("BPF", "bpfel", &[], "bpfel-unknown-none"),
+    // clang rejects the `gnuabiv2` version in the triple, so the C side uses bare `csky`.
+    ("CSKY", "csky", &[], "csky-unknown-linux-gnuabiv2"),
 ];
 
 /// Prefixes from `TARGETS` whose Rust callconv already reproduces the C `_Complex` ABI. The
@@ -44,11 +58,26 @@ const RUST_TARGETS: &[&str] = &[
     "WINDOWS_MSVC",
     "WINDOWS_GNU",
     "AARCH64_DARWIN",
-    // "I686",           // `cf`/`cd` returned differently than clang
-    // "S390X",          // `cf` passed directly, clang passes indirectly
-    // "POWERPC64LE",    // components passed/returned via GPRs, not FPRs
-    // "MIPS64EL",       // components packed differently
-    // "WASM32",         // clang uses `byval`, rustc an indirect pointer
+    "AARCH64_MSVC",
+    "ARM64EC",
+    "WASM32",
+    "S390X",
+    "I686",
+    "POWERPC",
+    "POWERPC64LE", // int-complex excluded in complex.rs: clang spreads 2 GPRs, rustc packs one
+    "MIPS64EL",
+    "WASM64",
+    "LOONGARCH64",
+    "LOONGARCH32",
+    "WIN32_GNU",
+    "WIN32_MSVC", // f16 excluded in complex.rs: clang returns `<2 x half>`, rustc `i32`
+    "CSKY",
+    "POWERPC64",   // int-complex excluded (same as POWERPC64LE)
+    "AIX",         // int-complex excluded (same as POWERPC64LE)
+    "SPARC",
+    "NVPTX",
+    "BPF",
+    "MIPS",
 ];
 
 fn main() {

@@ -1,16 +1,95 @@
-//! Rust side of the `_Complex` ABI check: `#[repr(complex)]` `Complex<T>` in `extern "C"`
-//! functions must be ABI-compatible with the clang C `_Complex` reference in `complex.c`.
-//!
-//! The `// <REV>:` lines record rustc's actual lowering for every target in `complex.c`, so the
-//! two files diff cell-by-cell. Where a line differs textually from `complex.c` but is still
-//! ABI-compatible (same registers / stack slots) the target is enabled in `rmake.rs`; assembly
-//! confirms rustc's `{re, im}` aggregate / `[N x i8]` slot occupy the same place as clang's two
-//! scalar args / `{T, T}` slot. `rmake.rs` only FileChecks the enabled `RUST_TARGETS`; any other
-//! lines document current (not-yet-matching) output. A few individual cells are omitted where
-//! rustc is not yet ABI-compatible (e.g. integer `_Complex` on powerpc64, `f16` on windows-msvc).
+//! Checks that `#[repr(complex)]` `Complex<T>` matches the C `_Complex` ABI in `extern "C"`
+//! functions. This is the rustc side of `tests/run-make/complex-c-abi`, which additionally
+//! checks these signatures against clang. Revisions are grouped by LLVM component.
+
+//@ add-minicore
+//@ compile-flags: -C no-prepopulate-passes -Z codegen-source-order
+
+//@ revisions: X86_64 I686 WINDOWS_MSVC WINDOWS_GNU WIN32_MSVC WIN32_GNU
+//@ [X86_64] compile-flags: --target x86_64-unknown-linux-gnu
+//@ [X86_64] needs-llvm-components: x86
+//@ [I686] compile-flags: --target i686-unknown-linux-gnu
+//@ [I686] needs-llvm-components: x86
+//@ [WINDOWS_MSVC] compile-flags: --target x86_64-pc-windows-msvc
+//@ [WINDOWS_MSVC] needs-llvm-components: x86
+//@ [WINDOWS_GNU] compile-flags: --target x86_64-pc-windows-gnu
+//@ [WINDOWS_GNU] needs-llvm-components: x86
+//@ [WIN32_MSVC] compile-flags: --target i686-pc-windows-msvc
+//@ [WIN32_MSVC] needs-llvm-components: x86
+//@ [WIN32_GNU] compile-flags: --target i686-pc-windows-gnu
+//@ [WIN32_GNU] needs-llvm-components: x86
+
+//@ revisions: AARCH64 AARCH64_DARWIN AARCH64_MSVC ARM64EC
+//@ [AARCH64] compile-flags: --target aarch64-unknown-linux-gnu
+//@ [AARCH64] needs-llvm-components: aarch64
+//@ [AARCH64_DARWIN] compile-flags: --target aarch64-apple-darwin
+//@ [AARCH64_DARWIN] needs-llvm-components: aarch64
+//@ [AARCH64_MSVC] compile-flags: --target aarch64-pc-windows-msvc
+//@ [AARCH64_MSVC] needs-llvm-components: aarch64
+//@ [ARM64EC] compile-flags: --target arm64ec-pc-windows-msvc
+//@ [ARM64EC] needs-llvm-components: aarch64
+
+//@ revisions: ARM
+//@ [ARM] compile-flags: --target arm-unknown-linux-gnueabihf
+//@ [ARM] needs-llvm-components: arm
+
+//@ revisions: RISCV64 RISCV32
+//@ [RISCV64] compile-flags: --target riscv64gc-unknown-linux-gnu
+//@ [RISCV64] needs-llvm-components: riscv
+//@ [RISCV32] compile-flags: --target riscv32gc-unknown-linux-gnu
+//@ [RISCV32] needs-llvm-components: riscv
+
+//@ revisions: LOONGARCH64 LOONGARCH32
+//@ [LOONGARCH64] compile-flags: --target loongarch64-unknown-linux-gnu
+//@ [LOONGARCH64] needs-llvm-components: loongarch
+//@ [LOONGARCH32] compile-flags: --target loongarch32-unknown-none
+//@ [LOONGARCH32] needs-llvm-components: loongarch
+
+//@ revisions: SPARC64 SPARC
+//@ [SPARC64] compile-flags: --target sparc64-unknown-linux-gnu
+//@ [SPARC64] needs-llvm-components: sparc
+//@ [SPARC] compile-flags: --target sparc-unknown-linux-gnu
+//@ [SPARC] needs-llvm-components: sparc
+
+//@ revisions: S390X
+//@ [S390X] compile-flags: --target s390x-unknown-linux-gnu
+//@ [S390X] needs-llvm-components: systemz
+
+//@ revisions: POWERPC POWERPC64LE POWERPC64 AIX
+//@ [POWERPC] compile-flags: --target powerpc-unknown-linux-gnu
+//@ [POWERPC] needs-llvm-components: powerpc
+//@ [POWERPC64LE] compile-flags: --target powerpc64le-unknown-linux-gnu
+//@ [POWERPC64LE] needs-llvm-components: powerpc
+//@ [POWERPC64] compile-flags: --target powerpc64-unknown-linux-gnu
+//@ [POWERPC64] needs-llvm-components: powerpc
+//@ [AIX] compile-flags: --target powerpc64-ibm-aix
+//@ [AIX] needs-llvm-components: powerpc
+
+//@ revisions: MIPS64EL MIPS
+//@ [MIPS64EL] compile-flags: --target mips64el-unknown-linux-gnuabi64
+//@ [MIPS64EL] needs-llvm-components: mips
+//@ [MIPS] compile-flags: --target mips-unknown-linux-gnu
+//@ [MIPS] needs-llvm-components: mips
+
+//@ revisions: WASM32 WASM64
+//@ [WASM32] compile-flags: --target wasm32-unknown-unknown
+//@ [WASM32] needs-llvm-components: webassembly
+//@ [WASM64] compile-flags: --target wasm64-unknown-unknown
+//@ [WASM64] needs-llvm-components: webassembly
+
+//@ revisions: CSKY
+//@ [CSKY] compile-flags: --target csky-unknown-linux-gnuabiv2
+//@ [CSKY] needs-llvm-components: csky
+
+//@ revisions: NVPTX
+//@ [NVPTX] compile-flags: --target nvptx64-nvidia-cuda
+//@ [NVPTX] needs-llvm-components: nvptx
+
+//@ revisions: BPF
+//@ [BPF] compile-flags: --target bpfel-unknown-none
+//@ [BPF] needs-llvm-components: bpf
 
 #![feature(no_core, lang_items, repr_complex, f16, f128)]
-#![no_std]
 #![no_core]
 #![crate_type = "lib"]
 

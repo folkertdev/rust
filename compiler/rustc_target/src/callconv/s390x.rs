@@ -42,6 +42,12 @@ where
         return;
     }
 
+    // `_Complex` is passed indirectly regardless of size (unlike a same-size plain struct).
+    if arg.layout.is_complex() {
+        arg.make_indirect();
+        return;
+    }
+
     let size = arg.layout.size;
     if size.bits() <= 128 {
         if let BackendRepr::SimdVector { .. } = arg.layout.backend_repr {

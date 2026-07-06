@@ -92,6 +92,14 @@ where
         extend_integer_width_mips(arg, 64);
     } else if arg.layout.pass_indirectly_in_non_rustic_abis(cx) {
         arg.make_indirect();
+    } else if arg.layout.is_complex()
+        && arg.layout.fields.count() == 2
+        && let Some(reg0) = float_reg(cx, arg, 0)
+        && let Some(reg1) = float_reg(cx, arg, 1)
+    {
+        // A floating-point `_Complex` is passed in FP registers (like clang, and like the
+        // return path). The general struct logic below only recognises aligned `f64` fields.
+        arg.cast_to(CastTarget::pair(reg0, reg1));
     } else {
         match arg.layout.fields {
             FieldsShape::Primitive => unreachable!(),

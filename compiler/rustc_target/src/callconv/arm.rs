@@ -18,7 +18,9 @@ where
 
         let valid_unit = match unit.kind {
             RegKind::Integer => false,
-            RegKind::Float => true,
+            // `_Float16` is not a VFP type, so a floating-point `_Complex` of it is not a
+            // homogeneous aggregate; clang passes it in a GPR like `[1 x i32]`.
+            RegKind::Float => !(arg.layout.is_complex() && unit.size.bits() == 16),
             RegKind::Vector { .. } => size.bits() == 64 || size.bits() == 128,
         };
 

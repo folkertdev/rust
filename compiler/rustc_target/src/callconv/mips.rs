@@ -1,12 +1,38 @@
-use rustc_abi::{HasDataLayout, Size, TyAbiInterface};
+use rustc_abi::{BackendRepr, Float, HasDataLayout, Primitive, Reg, RegKind, Size, TyAbiInterface};
 
-use crate::callconv::{ArgAbi, FnAbi, Reg, Uniform};
+use crate::callconv::{ArgAbi, CastTarget, FnAbi, Uniform};
 
-fn classify_ret<Ty, C>(cx: &C, ret: &mut ArgAbi<'_, Ty>, offset: &mut Size)
+/// The register holding one component of a `_Complex` (its real or imaginary part).
+fn complex_component_reg<'a, Ty, C>(cx: &C, arg: &ArgAbi<'a, Ty>) -> Option<Reg>
 where
+    Ty: TyAbiInterface<'a, C> + Copy,
     C: HasDataLayout,
 {
-    if !ret.layout.is_aggregate() {
+    let field = arg.layout.field(cx, 0);
+    match field.backend_repr {
+        BackendRepr::Scalar(s) => match s.primitive() {
+            Primitive::Float(Float::F16) => Some(Reg { kind: RegKind::Float, size: field.size }),
+            Primitive::Float(Float::F32) => Some(Reg::f32()),
+            Primitive::Float(Float::F64) => Some(Reg::f64()),
+            Primitive::Float(Float::F128) => Some(Reg::f128()),
+            Primitive::Int(..) => Some(Reg { kind: RegKind::Integer, size: field.size }),
+            Primitive::Pointer(_) => None,
+        },
+        _ => None,
+    }
+}
+
+fn classify_ret<'a, Ty, C>(cx: &C, ret: &mut ArgAbi<'a, Ty>, offset: &mut Size)
+where
+    Ty: TyAbiInterface<'a, C> + Copy,
+    C: HasDataLayout,
+{
+    if ret.layout.is_complex()
+        && let Some(reg) = complex_component_reg(cx, ret)
+    {
+        // clang returns a `_Complex` in registers, one per component.
+        ret.cast_to(CastTarget::pair(reg, reg));
+    } else if !ret.layout.is_aggregate() {
         ret.extend_integer_width_to(32);
     } else {
         ret.make_indirect();

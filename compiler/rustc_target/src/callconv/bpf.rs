@@ -1,7 +1,7 @@
 // see https://github.com/llvm/llvm-project/blob/main/llvm/lib/Target/BPF/BPFCallingConv.td
-use rustc_abi::TyAbiInterface;
+use rustc_abi::{Reg, RegKind, TyAbiInterface};
 
-use crate::callconv::{ArgAbi, FnAbi};
+use crate::callconv::{ArgAbi, FnAbi, Uniform};
 
 fn classify_ret<Ty>(ret: &mut ArgAbi<'_, Ty>) {
     if ret.layout.is_aggregate() || ret.layout.size.bits() > 64 {
@@ -19,7 +19,15 @@ where
         arg.make_indirect();
         return;
     }
-    if arg.layout.is_aggregate() || arg.layout.size.bits() > 64 {
+    if arg.layout.is_complex() {
+        // clang passes a `_Complex` directly: as one integer up to 64 bits, else as `[2 x i64]`.
+        let size = arg.layout.size;
+        if size.bits() <= 64 {
+            arg.cast_to(Reg { kind: RegKind::Integer, size });
+        } else {
+            arg.cast_to(Uniform::new(Reg::i64(), size));
+        }
+    } else if arg.layout.is_aggregate() || arg.layout.size.bits() > 64 {
         arg.make_indirect();
     } else {
         arg.extend_integer_width_to(32);

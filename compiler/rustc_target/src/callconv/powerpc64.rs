@@ -25,9 +25,10 @@ where
     C: HasDataLayout,
 {
     arg.layout.homogeneous_aggregate(cx).ok().and_then(|ha| ha.unit()).and_then(|unit| {
-        // ELFv1 and AIX only passes one-member aggregates transparently.
+        // ELFv1 and AIX only passes one-member aggregates transparently, except `_Complex`
+        // which is passed in registers per component on all ABIs.
         // ELFv2 passes up to eight uniquely addressable members.
-        if ((abi == ELFv1 || abi == AIX) && arg.layout.size > unit.size)
+        if ((abi == ELFv1 || abi == AIX) && !arg.layout.is_complex() && arg.layout.size > unit.size)
             || arg.layout.size > unit.size.checked_mul(8, cx).unwrap()
         {
             return None;
@@ -65,13 +66,14 @@ where
     // See https://github.com/llvm/llvm-project/blob/main/clang/lib/CodeGen/Targets/PPC.cpp.
     // The incoming parameter is represented as a pointer in the IR,
     // the alignment is associated with the size of the register. (align 8 for 64bit)
-    if !is_ret && abi == AIX {
+    if !is_ret && abi == AIX && !arg.layout.is_complex() {
         arg.pass_by_stack_offset(Some(Align::from_bytes(8).unwrap()));
         return;
     }
 
-    // The ELFv1 ABI doesn't return aggregates in registers
-    if is_ret && (abi == ELFv1 || abi == AIX) {
+    // The ELFv1 ABI doesn't return aggregates in registers, except a floating-point `_Complex`,
+    // whose components are returned in FP registers (handled by the homogeneous case below).
+    if is_ret && (abi == ELFv1 || abi == AIX) && !arg.layout.is_complex() {
         arg.make_indirect();
         return;
     }
