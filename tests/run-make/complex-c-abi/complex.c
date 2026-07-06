@@ -9,8 +9,36 @@
 // there is no reference ABI to match. `_Float16`/`__float128` complex only exist on
 // the targets whose clang defines `__FLT16_MANT_DIG__`/`__FLOAT128__`.
 //
-// Regenerate with the generator in the PR description; validate per target with:
-//   clang --target=<triple> <flags> -O2 -S -emit-llvm complex.c | FileCheck complex.c --check-prefix=<REV>
+// Each target is checked with the clang invocation the run-make driver uses:
+// RUN: %clang --target=x86_64-unknown-linux-gnu -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=X86_64
+// RUN: %clang --target=i686-unknown-linux-gnu -msse2 -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=I686
+// RUN: %clang --target=x86_64-pc-windows-msvc -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=WINDOWS_MSVC
+// RUN: %clang --target=x86_64-pc-windows-gnu -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=WINDOWS_GNU
+// RUN: %clang --target=aarch64-unknown-linux-gnu -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=AARCH64
+// RUN: %clang --target=aarch64-apple-darwin -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=AARCH64_DARWIN
+// RUN: %clang --target=aarch64-pc-windows-msvc -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=AARCH64_MSVC
+// RUN: %clang --target=arm64ec-pc-windows-msvc -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=ARM64EC
+// RUN: %clang --target=arm-unknown-linux-gnueabihf -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=ARM
+// RUN: %clang --target=riscv64-unknown-linux-gnu -march=rv64gc -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=RISCV64
+// RUN: %clang --target=riscv32-unknown-linux-gnu -march=rv32gc -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=RISCV32
+// RUN: %clang --target=s390x-unknown-linux-gnu -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=S390X
+// RUN: %clang --target=powerpc64le-unknown-linux-gnu -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=POWERPC64LE
+// RUN: %clang --target=powerpc64-unknown-linux-gnu -mabi=elfv1 -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=POWERPC64
+// RUN: %clang --target=powerpc64-ibm-aix -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=AIX
+// RUN: %clang --target=powerpc-unknown-linux-gnu -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=POWERPC
+// RUN: %clang --target=sparc64-unknown-linux-gnu -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=SPARC64
+// RUN: %clang --target=mips64el-unknown-linux-gnuabi64 -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=MIPS64EL
+// RUN: %clang --target=mips-unknown-linux-gnu -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=MIPS
+// RUN: %clang --target=wasm32-unknown-unknown -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=WASM32
+// RUN: %clang --target=wasm64-unknown-unknown -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=WASM64
+// RUN: %clang --target=loongarch64-unknown-linux-gnu -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=LOONGARCH64
+// RUN: %clang --target=loongarch32-unknown-none -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=LOONGARCH32
+// RUN: %clang --target=sparc-unknown-linux-gnu -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=SPARC
+// RUN: %clang --target=i686-pc-windows-msvc -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=WIN32_MSVC
+// RUN: %clang --target=i686-pc-windows-gnu -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=WIN32_GNU
+// RUN: %clang --target=nvptx64-nvidia-cuda -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=NVPTX
+// RUN: %clang --target=bpfel -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=BPF
+// RUN: %clang --target=csky -O2 -S -emit-llvm -o - %s | FileCheck %s --check-prefix=CSKY
 
 #ifdef __FLT16_MANT_DIG__
 // AARCH64:        define{{.*}} { half, half } @cplx_f16([2 x half]{{.*}}

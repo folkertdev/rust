@@ -72,8 +72,8 @@ const RUST_TARGETS: &[&str] = &[
     "WIN32_GNU",
     "WIN32_MSVC", // f16 excluded in complex.rs: clang returns `<2 x half>`, rustc `i32`
     "CSKY",
-    "POWERPC64",   // int-complex excluded (same as POWERPC64LE)
-    "AIX",         // int-complex excluded (same as POWERPC64LE)
+    "POWERPC64", // int-complex excluded (same as POWERPC64LE)
+    "AIX",       // int-complex excluded (same as POWERPC64LE)
     "SPARC",
     "NVPTX",
     "BPF",

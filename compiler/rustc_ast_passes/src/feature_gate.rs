@@ -200,12 +200,7 @@ impl<'a> Visitor<'a> for PostExpansionVisitor<'a> {
                             );
                         }
                         if item.has_name(sym::complex) {
-                            gate!(
-                                self,
-                                repr_complex,
-                                attr.span,
-                                "`repr(complex)` is experimental"
-                            );
+                            gate!(self, repr_complex, attr.span, "`repr(complex)` is experimental");
                         }
                     }
                 }
