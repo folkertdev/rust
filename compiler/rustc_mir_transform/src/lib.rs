@@ -50,6 +50,7 @@ mod liveness;
 mod patch;
 mod shim;
 mod ssa;
+mod tail_call;
 mod trivial_const;
 
 /// Exposed for rustc drivers.
@@ -213,6 +214,7 @@ declare_passes! {
 pub fn provide(providers: &mut Providers) {
     coverage::query::provide(providers);
     ffi_unwind_calls::provide(&mut providers.queries);
+    tail_call::provide(&mut providers.queries);
     shim::provide(&mut providers.queries);
     cross_crate_inline::provide(&mut providers.queries);
     providers.queries = query::Providers {
@@ -454,6 +456,9 @@ fn mir_promoted(
 
     // the `has_ffi_unwind_calls` query uses the raw mir, so make sure it is run.
     tcx.ensure_done().has_ffi_unwind_calls(def);
+
+    // the `uses_tail_call` query uses the raw mir, so make sure it is run.
+    tcx.ensure_done().uses_tail_call(def);
 
     // the `by_move_body` query uses the raw mir, so make sure it is run.
     if tcx.needs_coroutine_by_move_body_def_id(def.to_def_id()) {
