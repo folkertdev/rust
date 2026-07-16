@@ -1114,7 +1114,12 @@ fn should_encode_mir(
                 || (tcx.sess.opts.output_types.should_codegen()
                     && reachable_set.contains(&def_id)
                     && (tcx.generics_of(def_id).requires_monomorphization(tcx)
-                        || tcx.cross_crate_inlinable(def_id)));
+                        || tcx.cross_crate_inlinable(def_id)))
+                // Functions that use guaranteed tail calls (`become`) need their MIR available
+                // cross-crate so downstream crates can build the tail-call trampoline shim. A
+                // `TailCall` terminator makes a body non-inlinable, so this cannot piggyback on
+                // `cross_crate_inlinable` and must be an independent condition.
+                || tcx.uses_tail_call(def_id);
             // Comptime fns do not have optimized MIR at all.
             let opt =
                 opt && !matches!(tcx.constness(def_id), hir::Constness::Const { always: true });
