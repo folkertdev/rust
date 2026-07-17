@@ -123,6 +123,8 @@ struct WideU8 {
     a: u8,
 }
 
+// `extern "C"` does not clear the padding.
+//
 // CHECK-LABEL: c_ret_with_wide_u8:
 // CHECK: mov r7, sp
 // CHECK-NEXT: orr.w r0, r0, r1, lsl #16
@@ -131,6 +133,8 @@ extern "C" fn c_ret_with_wide_u8(a: u8, b: u8) -> [WideU8; 2] {
     [WideU8 { a }, WideU8 { a: b }]
 }
 
+// Upper bits are cleared by uxtb.
+//
 // CHECK-LABEL: cmse_ret_with_wide_u8:
 // CHECK: mov r7, sp
 // CHECK-NEXT: uxtb r1, r1
@@ -139,6 +143,36 @@ extern "C" fn c_ret_with_wide_u8(a: u8, b: u8) -> [WideU8; 2] {
 #[no_mangle]
 extern "cmse-nonsecure-entry" fn cmse_ret_with_wide_u8(a: u8, b: u8) -> [WideU8; 2] {
     [WideU8 { a }, WideU8 { a: b }]
+}
+
+// Same idea, the padding is recognized even through the MaybeUninit.
+//
+// CHECK-LABEL: cmse_ret_with_wide_u8_uninit:
+// CHECK: mov r7, sp
+// CHECK-NEXT: uxtb r0, r0
+// CHECK-NEXT: orr.w r0, r0, r1, lsl #16
+// CHECK-NEXT: bic r0, r0, #-16711936
+#[no_mangle]
+extern "cmse-nonsecure-entry" fn cmse_ret_with_wide_u8_uninit(
+    a: u16,
+    b: u16,
+) -> [MaybeUninit<WideU8>; 2] {
+    unsafe { [mem::transmute(a), mem::transmute(b)] }
+}
+
+// Same idea, the padding is recognized even through the MaybeUninit.
+//
+// CHECK-LABEL: cmse_ret_with_wide_u8_uninit_tuple:
+// CHECK: mov r7, sp
+// CHECK-NEXT: uxtb r0, r0
+// CHECK-NEXT: orr.w r0, r0, r1, lsl #16
+// CHECK-NEXT: bic r0, r0, #-16711936
+#[no_mangle]
+extern "cmse-nonsecure-entry" fn cmse_ret_with_wide_u8_uninit_tuple(
+    a: u16,
+    b: u16,
+) -> (MaybeUninit<WideU8>, MaybeUninit<WideU8>) {
+    unsafe { (mem::transmute(a), mem::transmute(b)) }
 }
 
 // CHECK-LABEL: c_call_with_inner_wide_u8:
@@ -175,30 +209,4 @@ extern "C" fn cmse_call_with_inner_wide_u8(
     x: [WideU8; 8],
 ) {
     unsafe { f(x) }
-}
-
-// CHECK-LABEL: cmse_ret_with_wide_u8_uninit:
-// CHECK: mov r7, sp
-// CHECK-NEXT: uxtb r0, r0
-// CHECK-NEXT: orr.w r0, r0, r1, lsl #16
-// CHECK-NEXT: bic r0, r0, #-16711936
-#[no_mangle]
-extern "cmse-nonsecure-entry" fn cmse_ret_with_wide_u8_uninit(
-    a: u16,
-    b: u16,
-) -> [MaybeUninit<WideU8>; 2] {
-    unsafe { [mem::transmute(a), mem::transmute(b)] }
-}
-
-// CHECK-LABEL: cmse_ret_with_wide_u8_uninit_tuple:
-// CHECK: mov r7, sp
-// CHECK-NEXT: uxtb r0, r0
-// CHECK-NEXT: orr.w r0, r0, r1, lsl #16
-// CHECK-NEXT: bic r0, r0, #-16711936
-#[no_mangle]
-extern "cmse-nonsecure-entry" fn cmse_ret_with_wide_u8_uninit_tuple(
-    a: u16,
-    b: u16,
-) -> (MaybeUninit<WideU8>, MaybeUninit<WideU8>) {
-    unsafe { (mem::transmute(a), mem::transmute(b)) }
 }
