@@ -550,10 +550,10 @@ fn build_tail_call_shim<'tcx>(
     let span = tcx.def_span(def_id);
     let source_info = SourceInfo::outermost(span);
 
-    // Clone and monomorphize the original body, which still contains `TailCall` terminators.
-    // FIXME(tail-call-fallback): this sources from `optimized_mir`, so the (not-yet-implemented)
-    // pass that replaces the real body with a `tail_eval` trampoline must not run before this.
-    let source = tcx.optimized_mir(def_id);
+    // Clone and monomorphize the pre-trampoline body, which still contains `TailCall` terminators.
+    // `optimized_mir` replaces the real body with a `tail_eval` trampoline, so we source from the
+    // dedicated `mir_tail_call_shim_source` query (captured before that rewrite).
+    let source = tcx.mir_tail_call_shim_source(def_id.expect_local());
     let mut body =
         EarlyBinder::bind(tcx, source.clone()).instantiate(tcx, args).skip_norm_wip();
 
@@ -711,14 +711,18 @@ fn build_tail_call_shim<'tcx>(
     }
 
     body.source = MirSource::from_shim(ty::ShimKind::TailCall(def_id, args));
-    // We cloned a fully-processed body (already at `Runtime(Optimized)`); clear derived data and
-    // re-run the passes our rewrite invalidated, without a phase change.
-    body.mentioned_items = None;
+    // The source body is drops-elaborated but not yet optimized; run the shim pipeline to lift it
+    // to `Runtime(Optimized)`, which also (re)generates `mentioned_items` for the rewritten body.
     pm::run_passes_no_validate(
         tcx,
         &mut body,
-        &[&mentioned_items::MentionedItems, &simplify::SimplifyCfg::MakeShim],
-        None,
+        &[
+            &mentioned_items::MentionedItems,
+            &abort_unwinding_calls::AbortUnwindingCalls,
+            &add_call_guards::CriticalCallEdges,
+            &simplify::SimplifyCfg::MakeShim,
+        ],
+        Some(MirPhase::Runtime(RuntimePhase::Optimized)),
     );
     body
 }

@@ -50,7 +50,6 @@ mod liveness;
 mod patch;
 mod shim;
 mod ssa;
-mod tail_call;
 mod trivial_const;
 
 /// Exposed for rustc drivers.
@@ -206,6 +205,7 @@ declare_passes! {
     mod sroa : ScalarReplacementOfAggregates;
     mod strip_debuginfo : StripDebugInfo;
     mod ssa_range_prop: SsaRangePropagation;
+    mod tail_call : LowerTailCall;
     mod unreachable_enum_branching : UnreachableEnumBranching;
     mod unreachable_prop : UnreachablePropagation;
     mod validate : Validator;
@@ -721,6 +721,9 @@ pub(crate) fn run_optimization_passes<'tcx>(tcx: TyCtxt<'tcx>, body: &mut Body<'
         tcx,
         body,
         &[
+            // On the portable tail-call fallback, replace `become`-using bodies with a trampoline
+            // before anything else runs on them.
+            &tail_call::LowerTailCall,
             // Add some UB checks before any UB gets optimized away.
             &check_alignment::CheckAlignment,
             &check_null::CheckNull,
@@ -825,6 +828,12 @@ fn inner_optimized_mir(tcx: TyCtxt<'_>, did: LocalDefId) -> Body<'_> {
         Some(other) => panic!("do not use `optimized_mir` for constants: {other:?}"),
     }
     debug!("about to call mir_drops_elaborated...");
+    // Capture the tail-call shim source before we steal the drops-elaborated body below, since (on
+    // the portable tail-call fallback) the body gets rewritten into a `tail_eval` trampoline, which
+    // would otherwise destroy the `TailCall` terminators the shim is built from.
+    if tcx.uses_tail_call(did) {
+        tcx.ensure_done().mir_tail_call_shim_source(did);
+    }
     let body = tcx.mir_drops_elaborated_and_const_checked(did).steal();
     let mut body = remap_mir_for_const_eval_select(tcx, body, hir::Constness::NotConst);
 

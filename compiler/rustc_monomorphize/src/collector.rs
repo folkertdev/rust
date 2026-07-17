@@ -1358,23 +1358,6 @@ fn collect_items_of_instance<'tcx>(
         }
     }
 
-    // TEMP(tail-call-fallback): force-emit the tail-call shim of non-generic `become`-using
-    // functions so the shim builder can be validated end-to-end before item 6 exists.
-    if mode == CollectionMode::UsedItems
-        && let ty::InstanceKind::Item(def_id) = instance.def
-        && instance.args.is_empty()
-        && let Some(local) = def_id.as_local()
-        && tcx.uses_tail_call(local)
-    {
-        let shim = Instance {
-            def: ty::InstanceKind::Shim(ty::ShimKind::TailCall(def_id, instance.args)),
-            args: instance.args,
-        };
-        if tcx.should_codegen_locally(shim) {
-            collector.used_items.push(create_fn_mono_item(tcx, shim, DUMMY_SP));
-        }
-    }
-
     // Always visit all `required_consts`, so that we evaluate them and abort compilation if any of
     // them errors.
     for const_op in body.required_consts() {

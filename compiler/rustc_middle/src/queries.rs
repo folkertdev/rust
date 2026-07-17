@@ -1142,6 +1142,14 @@ rustc_queries! {
         cache_on_disk
     }
 
+    /// A copy of `{}`'s MIR that still contains its `TailCall` terminators, used as the source for
+    /// building its tail-call trampoline shim. This is captured before `optimized_mir` replaces the
+    /// body with a `tail_eval` trampoline (on targets using the portable tail-call fallback).
+    query mir_tail_call_shim_source(key: LocalDefId) -> &'tcx mir::Body<'tcx> {
+        desc { "capturing the tail-call shim source MIR for `{}`", tcx.def_path_str(key) }
+        arena_cache
+    }
+
     /// Returns the types assumed to be well formed while "inside" of the given item.
     ///
     /// Note that we've liberated the late bound regions of function signatures, so
