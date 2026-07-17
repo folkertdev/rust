@@ -210,3 +210,193 @@ extern "C" fn cmse_call_with_inner_wide_u8(
 ) {
     unsafe { f(x) }
 }
+
+/// No variant-dependent padding.
+#[repr(C)]
+enum VariantsSameSize {
+    A(u16),
+    B(u16),
+}
+impl Copy for VariantsSameSize {}
+
+// CHECK-LABEL: variants_same_size:
+// CHECK: mov r7, sp
+// CHECK-NEXT: ldrh r1, [r0, #2]
+// CHECK-NEXT: ldrb r0, [r0]
+// CHECK-NEXT: orr.w r0, r0, r1, lsl #16
+#[no_mangle]
+extern "cmse-nonsecure-entry" fn variants_same_size(v: &VariantsSameSize) -> VariantsSameSize {
+    *v
+}
+
+/// One byte of variant-dependent padding.
+#[repr(C)]
+enum VariantsDifferentSize {
+    A(u8),
+    B(u16),
+}
+impl Copy for VariantsDifferentSize {}
+
+// The tag is read (`lsls` tests bit 0) and byte 3 is only cleared (`uxtbeq`) for variant `A`.
+// CHECK-LABEL: variants_different_size:
+// CHECK: mov r7, sp
+// CHECK-NEXT: ldrh r1, [r0, #2]
+// CHECK-NEXT: ldrb r0, [r0]
+// CHECK-NEXT: lsls r2, r0, #31
+// CHECK-NEXT: it eq
+// CHECK-NEXT: uxtbeq r1, r1
+// CHECK-NEXT: orr.w r0, r0, r1, lsl #16
+#[no_mangle]
+extern "cmse-nonsecure-entry" fn variants_different_size(
+    v: &VariantsDifferentSize,
+) -> VariantsDifferentSize {
+    *v
+}
+
+enum Void {}
+impl Copy for Void {}
+
+#[repr(C)]
+enum UninhabitedVariant {
+    A(Void),
+    B(u16),
+}
+impl Copy for UninhabitedVariant {}
+
+// Only `B` is inhabited, so reading the tag is not needed.
+//
+// CHECK-LABEL: uninhabited_variant:
+// CHECK: mov r7, sp
+// CHECK-NEXT: ldrh r1, [r0, #2]
+// CHECK-NEXT: ldrb r0, [r0]
+// CHECK-NEXT: orr.w r0, r0, r1, lsl #16
+#[no_mangle]
+extern "cmse-nonsecure-entry" fn uninhabited_variant(v: &UninhabitedVariant) -> UninhabitedVariant {
+    *v
+}
+
+// CHECK-LABEL: variants_same_size_array:
+// CHECK: mov r7, sp
+// CHECK-NEXT: ldrh r1, [r0, #2]
+// CHECK-NEXT: ldrb r0, [r0]
+// CHECK-NEXT: orr.w r0, r0, r1, lsl #16
+#[no_mangle]
+#[expect(improper_ctypes_definitions)]
+extern "cmse-nonsecure-entry" fn variants_same_size_array(
+    v: &[VariantsSameSize; 1],
+) -> [VariantsSameSize; 1] {
+    *v
+}
+
+// CHECK-LABEL: variants_different_size_array:
+// CHECK: mov r7, sp
+// CHECK-NEXT: ldrh r1, [r0, #2]
+// CHECK-NEXT: ldrb r0, [r0]
+// CHECK-NEXT: lsls r2, r0, #31
+// CHECK-NEXT: it eq
+// CHECK-NEXT: uxtbeq r1, r1
+// CHECK-NEXT: orr.w r0, r0, r1, lsl #16
+#[no_mangle]
+#[expect(improper_ctypes_definitions)]
+extern "cmse-nonsecure-entry" fn variants_different_size_array(
+    v: &[VariantsDifferentSize; 1],
+) -> [VariantsDifferentSize; 1] {
+    *v
+}
+
+// CHECK-LABEL: variants_same_size_tuple:
+// CHECK: mov r7, sp
+// CHECK-NEXT: ldrh r1, [r0, #2]
+// CHECK-NEXT: ldrb r0, [r0]
+// CHECK-NEXT: orr.w r0, r0, r1, lsl #16
+#[no_mangle]
+#[expect(improper_ctypes_definitions)]
+extern "cmse-nonsecure-entry" fn variants_same_size_tuple(
+    v: &(VariantsSameSize,),
+) -> (VariantsSameSize,) {
+    *v
+}
+
+// CHECK-LABEL: variants_different_size_tuple:
+// CHECK: mov r7, sp
+// CHECK-NEXT: ldrh r1, [r0, #2]
+// CHECK-NEXT: ldrb r0, [r0]
+// CHECK-NEXT: lsls r2, r0, #31
+// CHECK-NEXT: it eq
+// CHECK-NEXT: uxtbeq r1, r1
+// CHECK-NEXT: orr.w r0, r0, r1, lsl #16
+#[no_mangle]
+#[expect(improper_ctypes_definitions)]
+extern "cmse-nonsecure-entry" fn variants_different_size_tuple(
+    v: &(VariantsDifferentSize,),
+) -> (VariantsDifferentSize,) {
+    *v
+}
+
+/// Three variants of different sizes.
+#[repr(C)]
+enum ThreeVariants {
+    A(u8),
+    B(u16),
+    C(u32),
+}
+
+// The tag in r0 is used to index into a jump table. Each arm clears a different amount of memory.
+//
+// CHECK-LABEL: cmse_call_three_variants:
+// CHECK: mov r12, r0
+// CHECK-NEXT: uxtb r0, r1
+// CHECK-NEXT: .LCPI{{[0-9_]+}}:
+//
+// CHECK-NEXT: tbb [pc, r0]
+// CHECK-NEXT: .LJTI{{[0-9_]+}}:
+// CHECK-NEXT: .byte {{.*}}
+// CHECK-NEXT: .byte {{.*}}
+// CHECK-NEXT: .byte {{.*}}
+// CHECK-NEXT: .byte {{.*}}
+// CHECK-NEXT: .p2align 1
+//
+// CHECK-NEXT: .LBB{{[0-9_]+}}:
+// CHECK-NEXT: uxtb r2, r2
+// CHECK-NEXT: b .LBB{{[0-9_]+}}
+//
+// CHECK-NEXT: .LBB{{[0-9_]+}}:
+// CHECK-NEXT: uxth r2, r2
+//
+// CHECK-NEXT: .LBB{{[0-9_]+}}:
+// CHECK-NEXT: mov r1, r0
+#[no_mangle]
+#[expect(improper_ctypes_definitions)]
+extern "C" fn cmse_call_three_variants(
+    f: unsafe extern "cmse-nonsecure-call" fn(ThreeVariants),
+    x: ThreeVariants,
+) {
+    unsafe { f(x) }
+}
+
+/// The tag is stored in the niche of the `bool`.
+#[repr(C)]
+struct BoolU32 {
+    flag: bool,
+    val: u32,
+}
+
+// Bit 0b0010 is used to encode the tag, so `r09 - 2 == 0` checks the tag value.
+// Zero-extension clears padding in the tag 32-bit word, the `val` is either 0
+// (stored in r1) when None or the actual value r2 when Some.
+//
+// CHECK-LABEL: cmse_call_niche:
+// CHECK: mov r7, sp
+// CHECK-NEXT: mov r3, r0
+// CHECK-NEXT: uxtb r0, r1
+// CHECK-NEXT: subs r1, r0, #2
+// CHECK-NEXT: it ne
+// CHECK-NEXT: movne r1, r2
+#[no_mangle]
+#[expect(improper_ctypes_definitions)]
+extern "C" fn cmse_call_niche(
+    f: unsafe extern "cmse-nonsecure-call" fn(Option<BoolU32>),
+    x: Option<BoolU32>,
+) {
+    unsafe { f(x) }
+}
