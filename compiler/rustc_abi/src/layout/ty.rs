@@ -316,6 +316,36 @@ impl<'a, Ty> TyAndLayout<'a, Ty> {
         uninit_ranges
     }
 
+    /// Returns `true` if this type transitively contains a multi-variant enum, i.e. some of its
+    /// padding is only padding for *some* variants and can only be identified after reading a tag
+    /// at runtime.
+    ///
+    /// When this returns `false`, [`Self::padding_ranges`] describes *all* of the type's padding.
+    /// When it returns `true`, [`Self::padding_ranges`] must not be relied on to clear padding,
+    /// because it does not account for enum tags (it treats them as padding) nor for the extra
+    /// padding of individual variants.
+    ///
+    /// Unions are treated as not having variant-dependent padding: their active field cannot be
+    /// determined at runtime, so the recursion stops there.
+    pub fn has_variant_dependent_padding<C>(&self, cx: &C) -> bool
+    where
+        Ty: TyAbiInterface<'a, C> + Copy,
+    {
+        match self.variants {
+            Variants::Multiple { .. } => true,
+            Variants::Empty => false,
+            Variants::Single { .. } => match &self.fields {
+                FieldsShape::Primitive | FieldsShape::Union(_) => false,
+                FieldsShape::Array { count, .. } => {
+                    *count > 0 && self.field(cx, 0).has_variant_dependent_padding(cx)
+                }
+                FieldsShape::Arbitrary { offsets, .. } => {
+                    (0..offsets.len()).any(|i| self.field(cx, i).has_variant_dependent_padding(cx))
+                }
+            },
+        }
+    }
+
     /// Extend `out` with all ranges of bytes that *may* carry relevant data for values of this type.
     /// For enums and unions there are offsets that are initialized for some
     /// variants but not for others; those offset *will* get added to `out`.
