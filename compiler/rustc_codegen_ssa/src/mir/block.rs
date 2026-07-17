@@ -2,13 +2,12 @@ use std::cmp;
 use std::ops::Range;
 
 use rustc_abi::{
-    Align, ArmCall, BackendRepr, CanonAbi, ExternAbi, FieldIdx, FieldsShape, HasDataLayout, Reg,
-    Size, VariantIdx, Variants, WrappingRange,
+    Align, ArmCall, BackendRepr, CanonAbi, ExternAbi, FieldsShape, HasDataLayout, Reg, Size,
+    VariantIdx, Variants, WrappingRange,
 };
 use rustc_ast as ast;
 use rustc_ast::{InlineAsmOptions, InlineAsmTemplatePiece};
 use rustc_data_structures::packed::Pu128;
-use rustc_data_structures::range_set::RangeSet;
 use rustc_hir::attrs::AttributeKind;
 use rustc_hir::lang_items::LangItem;
 use rustc_lint_defs::builtin::TAIL_CALL_TRACK_CALLER;
@@ -610,7 +609,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     // (nested) enums, whose tags are read at runtime; only unions still rely on a
                     // lint to reject the cases we cannot clear.
                     let ret_layout = self.fn_abi.ret.layout;
-                    self.clear_cmse_padding(bx, llslot, Size::ZERO, ret_layout.size, ret_layout);
+                    self.clear_cmse_padding(bx, llslot, ret_layout.size, ret_layout);
                 }
 
                 load_cast(bx, cast_ty, llslot, self.fn_abi.ret.layout.align.abi)
@@ -1750,229 +1749,150 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         }
     }
 
-    /// Zero all padding bytes of the value of type `layout` stored at `base_ptr + base_offset`,
-    /// *including* padding that only exists for the value's actual runtime variant (for nested
-    /// enums, the tag is read at runtime to identify which bytes are padding).
+    /// Zero the padding bytes of the value of type `layout` stored at `base_ptr`, so that no
+    /// secure-world data leaks across a CMSE boundary. This includes the padding that only exists
+    /// for the value's active runtime variant of (nested) enums, whose tags are read at runtime.
     ///
-    /// This is used to prevent secure-world data from leaking across a CMSE boundary. Enum tags
-    /// and all live data are always preserved; only padding is cleared. Writes never go past
+    /// Enum tags and all live data are preserved; only padding is cleared. Writes never go past
     /// `limit` bytes from `base_ptr` (the argument path may hand us a scratch slot that is smaller
     /// than the Rust layout, when the ABI drops trailing padding).
     fn clear_cmse_padding(
         &mut self,
         bx: &mut Bx,
         base_ptr: Bx::Value,
+        limit: Size,
+        layout: TyAndLayout<'tcx>,
+    ) {
+        // First clear all variant-independent ("guaranteed") padding in one shot. `padding_ranges`
+        // already recurses through the whole layout and preserves enum tags, so this is everything
+        // unless a (nested) enum has variant-dependent padding.
+        self.zero_layout_padding(bx, base_ptr, Size::ZERO, limit, &layout.padding_ranges(self.cx));
+
+        // Then clear the extra padding of the active variant of any (nested) enum.
+        self.clear_variant_padding(bx, base_ptr, Size::ZERO, limit, layout);
+    }
+
+    /// Clears the *variant-dependent* padding of `layout` (stored at `base_ptr + base_offset`): for
+    /// every reachable multi-variant enum, reads its tag and zeroes the padding specific to the
+    /// active variant. Guaranteed padding is assumed already cleared by [`Self::clear_cmse_padding`].
+    fn clear_variant_padding(
+        &mut self,
+        bx: &mut Bx,
+        base_ptr: Bx::Value,
         base_offset: Size,
         limit: Size,
         layout: TyAndLayout<'tcx>,
     ) {
-        // Fast path: no (nested) multi-variant enum, so all padding is "guaranteed" padding that
-        // `padding_ranges` fully describes without inspecting any tag.
-        if !layout.has_variant_dependent_padding(bx.cx()) {
-            let ranges: Vec<Range<Size>> = layout
-                .padding_ranges(bx.cx())
-                .into_iter()
-                .map(|r| (base_offset + r.start)..(base_offset + r.end))
-                .collect();
-            self.zero_byte_ranges(bx, base_ptr, limit, &ranges);
+        let cx = self.cx;
+        if !layout.has_variant_dependent_padding(cx) {
             return;
         }
 
-        match layout.variants {
-            Variants::Empty => {}
-            Variants::Single { .. } => {
-                self.clear_cmse_padding_fields(bx, base_ptr, base_offset, limit, layout, None);
-            }
-            Variants::Multiple { tag_field, ref variants, .. } => {
-                let num_variants = variants.len();
-
-                // Find the inhabited variants that actually have something to clear. If there are
-                // none, we can skip reading the tag and emitting a switch entirely.
-                let mut todo = Vec::with_capacity(num_variants);
-                for v in (0..num_variants).map(VariantIdx::from_usize) {
-                    let variant = layout.for_variant(bx.cx(), v);
-                    if !variant.is_uninhabited()
-                        && self.variant_needs_clearing(layout, variant, tag_field)
-                    {
-                        todo.push((v, variant));
+        // Recurse into aggregate fields/elements to reach any nested enums.
+        match layout.fields {
+            FieldsShape::Array { stride, count } => {
+                let elem = layout.field(cx, 0);
+                if elem.has_variant_dependent_padding(cx) {
+                    for idx in 0..count {
+                        let off = base_offset + idx * stride;
+                        self.clear_variant_padding(bx, base_ptr, off, limit, elem);
                     }
                 }
-                if todo.is_empty() {
-                    return;
+            }
+            FieldsShape::Arbitrary { .. } => {
+                for i in 0..layout.fields.count() {
+                    let field = layout.field(cx, i);
+                    if field.has_variant_dependent_padding(cx) {
+                        let off = base_offset + layout.fields.offset(i);
+                        self.clear_variant_padding(bx, base_ptr, off, limit, field);
+                    }
                 }
+            }
+            FieldsShape::Primitive | FieldsShape::Union(_) => {}
+        }
 
-                let discr_ty = layout.ty.discriminant_ty(bx.tcx());
-                let enum_ptr = self.offset_ptr(bx, base_ptr, base_offset);
-                let operand = OperandRef {
-                    val: OperandValue::Ref(PlaceValue::new_sized(enum_ptr, layout.align.abi)),
-                    layout,
-                    move_annotation: None,
-                };
-                let discr = operand.codegen_get_discr(self, bx, discr_ty);
+        // If this layout is itself a multi-variant enum, read the tag and clear the extra padding of
+        // whichever variant is active (and recurse into that variant's own fields).
+        let Variants::Multiple { ref variants, .. } = layout.variants else {
+            return;
+        };
 
-                let root_block = bx.llbb();
-                let join_block = bx.append_sibling_block("cmse_pad_join");
-                let mut cases = Vec::with_capacity(todo.len());
-
-                for (v, variant) in todo {
-                    let discr_val = layout
-                        .ty
-                        .discriminant_for_variant(bx.tcx(), v)
-                        .expect("multi-variant layout on a type without discriminants")
-                        .val;
-
-                    let variant_block = bx.append_sibling_block("cmse_pad_variant");
-                    bx.switch_to_block(variant_block);
-                    self.clear_cmse_padding_fields(
-                        bx,
-                        base_ptr,
-                        base_offset,
-                        limit,
-                        variant,
-                        Some((layout, tag_field)),
-                    );
-                    bx.br(join_block);
-                    cases.push((discr_val, variant_block));
-                }
-
-                // Any discriminant not listed above belongs to a variant that needs no clearing;
-                // routing it straight to the join block is correct.
-                bx.switch_to_block(root_block);
-                bx.switch(discr, join_block, cases.into_iter());
-                bx.switch_to_block(join_block);
+        // Collect the inhabited variants that need clearing: those with extra padding or a nested
+        // enum of their own. If there are none, there is nothing to branch on.
+        let mut todo = Vec::with_capacity(variants.len());
+        for v in (0..variants.len()).map(VariantIdx::from_usize) {
+            let variant = layout.for_variant(cx, v);
+            if variant.is_uninhabited() {
+                continue;
+            }
+            let extra = layout.variant_extra_padding_ranges(cx, v);
+            let has_nested = (0..variant.fields.count())
+                .any(|i| variant.field(cx, i).has_variant_dependent_padding(cx));
+            if !extra.is_empty() || has_nested {
+                todo.push((v, variant, extra));
             }
         }
-    }
-
-    /// Clears the padding of a `Variants::Single` layout: the gaps between its fields (and, for a
-    /// downcast enum variant, the bytes not used by the active variant), then recurses into each
-    /// field. `enum_info` is `Some((enum_layout, tag_field))` when `layout` is an enum variant, in
-    /// which case the enum's tag is preserved and the cleared region spans the whole enum.
-    fn clear_cmse_padding_fields(
-        &mut self,
-        bx: &mut Bx,
-        base_ptr: Bx::Value,
-        base_offset: Size,
-        limit: Size,
-        layout: TyAndLayout<'tcx>,
-        enum_info: Option<(TyAndLayout<'tcx>, FieldIdx)>,
-    ) {
-        let cx = self.cx;
-
-        // Arrays: recurse into every element and zero the inter-element and trailing gaps.
-        if let FieldsShape::Array { stride, count } = layout.fields {
-            let elem = layout.field(cx, 0);
-            let mut occupied = RangeSet::new();
-            for idx in 0..count {
-                occupied.add_range(idx * stride, elem.size);
-            }
-            self.zero_complement(bx, base_ptr, base_offset, limit, &occupied, layout.size);
-            for idx in 0..count {
-                self.clear_cmse_padding(bx, base_ptr, base_offset + idx * stride, limit, elem);
-            }
+        if todo.is_empty() {
             return;
         }
 
-        // The region to clear spans the whole enum for a variant (so variant-specific trailing
-        // padding is cleared), or just this layout otherwise.
-        let (region_size, tag) = match enum_info {
-            Some((enum_layout, tag_field)) => {
-                let tag_offset = enum_layout.fields.offset(tag_field.as_usize());
-                let tag_size = enum_layout.field(cx, tag_field.as_usize()).size;
-                (enum_layout.size, Some((tag_offset, tag_size)))
-            }
-            None => (layout.size, None),
+        let discr_ty = layout.ty.discriminant_ty(bx.tcx());
+        let enum_ptr = self.offset_ptr(bx, base_ptr, base_offset);
+        let operand = OperandRef {
+            val: OperandValue::Ref(PlaceValue::new_sized(enum_ptr, layout.align.abi)),
+            layout,
+            move_annotation: None,
         };
+        let discr = operand.codegen_get_discr(self, bx, discr_ty);
 
-        let mut occupied = RangeSet::new();
-        if let Some((tag_offset, tag_size)) = tag {
-            occupied.add_range(tag_offset, tag_size);
-        }
-        for i in 0..layout.fields.count() {
-            occupied.add_range(layout.fields.offset(i), layout.field(cx, i).size);
-        }
-        self.zero_complement(bx, base_ptr, base_offset, limit, &occupied, region_size);
+        let root_block = bx.llbb();
+        let join_block = bx.append_sibling_block("cmse_pad_join");
+        let mut cases = Vec::with_capacity(todo.len());
 
-        for i in 0..layout.fields.count() {
-            let field = layout.field(cx, i);
-            let field_offset = base_offset + layout.fields.offset(i);
-            if field.has_variant_dependent_padding(cx) {
-                self.clear_cmse_padding(bx, base_ptr, field_offset, limit, field);
-            } else {
-                // A field with no variant-dependent padding has all of its interior padding
-                // described by `padding_ranges` (the gaps *around* it were already cleared above).
-                let ranges: Vec<Range<Size>> = field
-                    .padding_ranges(cx)
-                    .into_iter()
-                    .map(|r| (field_offset + r.start)..(field_offset + r.end))
-                    .collect();
-                self.zero_byte_ranges(bx, base_ptr, limit, &ranges);
+        for (v, variant, extra) in todo {
+            let discr_val = layout
+                .ty
+                .discriminant_for_variant(bx.tcx(), v)
+                .expect("multi-variant layout on a type without discriminants")
+                .val;
+
+            let variant_block = bx.append_sibling_block("cmse_pad_variant");
+            bx.switch_to_block(variant_block);
+
+            // The extra padding of this variant, then any nested enums within it.
+            self.zero_layout_padding(bx, base_ptr, base_offset, limit, &extra);
+            for i in 0..variant.fields.count() {
+                let field = variant.field(cx, i);
+                if field.has_variant_dependent_padding(cx) {
+                    let off = base_offset + variant.fields.offset(i);
+                    self.clear_variant_padding(bx, base_ptr, off, limit, field);
+                }
             }
+
+            bx.br(join_block);
+            cases.push((discr_val, variant_block));
         }
+
+        // A discriminant not listed above belongs to a variant that needs no clearing; route it
+        // straight to the join block.
+        bx.switch_to_block(root_block);
+        bx.switch(discr, join_block, cases.into_iter());
+        bx.switch_to_block(join_block);
     }
 
-    /// Returns whether the given variant of `enum_layout` has any padding to clear: either bytes
-    /// of the enum not covered by the tag or the variant's fields, or a field that itself needs
-    /// clearing.
-    fn variant_needs_clearing(
-        &self,
-        enum_layout: TyAndLayout<'tcx>,
-        variant: TyAndLayout<'tcx>,
-        tag_field: FieldIdx,
-    ) -> bool {
-        let cx = self.cx;
-
-        let mut occupied = RangeSet::new();
-        occupied.add_range(
-            enum_layout.fields.offset(tag_field.as_usize()),
-            enum_layout.field(cx, tag_field.as_usize()).size,
-        );
-        for i in 0..variant.fields.count() {
-            occupied.add_range(variant.fields.offset(i), variant.field(cx, i).size);
-        }
-
-        // Is any byte of the enum left uncovered by the tag and the variant's fields?
-        let mut covered = Size::ZERO;
-        for &(offset, size) in occupied.0.iter() {
-            if offset > covered {
-                return true;
-            }
-            covered = Ord::max(covered, offset + size);
-        }
-        if enum_layout.size > covered {
-            return true;
-        }
-
-        // Does any field need its own clearing?
-        (0..variant.fields.count()).any(|i| {
-            let field = variant.field(cx, i);
-            field.has_variant_dependent_padding(cx) || !field.padding_ranges(cx).is_empty()
-        })
-    }
-
-    /// Zeroes every byte of `[base_offset, base_offset + region_size)` that is not in `occupied`
-    /// (whose offsets are relative to `base_offset`), clamped to `limit` bytes from `base_ptr`.
-    fn zero_complement(
+    /// Zeroes `ranges` (offsets relative to a layout placed at `base_offset` within `base_ptr`),
+    /// clamped to `limit` bytes from `base_ptr`.
+    fn zero_layout_padding(
         &mut self,
         bx: &mut Bx,
         base_ptr: Bx::Value,
         base_offset: Size,
         limit: Size,
-        occupied: &RangeSet<Size>,
-        region_size: Size,
+        ranges: &[Range<Size>],
     ) {
-        let mut ranges = Vec::new();
-        let mut covered = Size::ZERO;
-        for &(offset, size) in occupied.0.iter() {
-            if offset > covered {
-                ranges.push((base_offset + covered)..(base_offset + offset));
-            }
-            covered = Ord::max(covered, offset + size);
-        }
-        if region_size > covered {
-            ranges.push((base_offset + covered)..(base_offset + region_size));
-        }
-        self.zero_byte_ranges(bx, base_ptr, limit, &ranges);
+        let shifted: Vec<Range<Size>> =
+            ranges.iter().map(|r| (base_offset + r.start)..(base_offset + r.end)).collect();
+        self.zero_byte_ranges(bx, base_ptr, limit, &shifted);
     }
 
     fn offset_ptr(&self, bx: &mut Bx, base_ptr: Bx::Value, offset: Size) -> Bx::Value {
@@ -2121,7 +2041,6 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     self.clear_cmse_padding(
                         bx,
                         llscratch,
-                        Size::ZERO,
                         Size::from_bytes(copy_bytes),
                         arg.layout,
                     );

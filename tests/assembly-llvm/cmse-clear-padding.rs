@@ -275,11 +275,11 @@ extern "cmse-nonsecure-entry" fn uninhabited_variant(v: &UninhabitedVariant) -> 
     *v
 }
 
+// The single guaranteed-padding byte is cleared with a `bic` mask over the whole loaded word.
 // CHECK-LABEL: variants_same_size_array:
 // CHECK: mov r7, sp
-// CHECK-NEXT: ldrh r1, [r0, #2]
-// CHECK-NEXT: ldrb r0, [r0]
-// CHECK-NEXT: orr.w r0, r0, r1, lsl #16
+// CHECK-NEXT: ldr r0, [r0]
+// CHECK-NEXT: bic r0, r0, #65280
 #[no_mangle]
 #[expect(improper_ctypes_definitions)]
 extern "cmse-nonsecure-entry" fn variants_same_size_array(
@@ -341,30 +341,19 @@ enum ThreeVariants {
     C(u32),
 }
 
-// The tag in r0 is used to index into a jump table. Each arm clears a different amount of memory.
-//
+// The tag in r0 selects how much of the payload word `r2` is padding: variant `A` clears down to a
+// byte (`uxtb`), `B` down to a halfword (`uxth`), and `C` (the full `u32`) needs no clearing and
+// falls through. Only `A` and `B` need a branch; the guaranteed tag-word padding is already cleared.
 // CHECK-LABEL: cmse_call_three_variants:
-// CHECK: mov r12, r0
+// CHECK: mov r3, r0
 // CHECK-NEXT: uxtb r0, r1
-// CHECK-NEXT: .LCPI{{[0-9_]+}}:
-//
-// CHECK-NEXT: tbb [pc, r0]
-// CHECK-NEXT: .LJTI{{[0-9_]+}}:
-// CHECK-NEXT: .byte {{.*}}
-// CHECK-NEXT: .byte {{.*}}
-// CHECK-NEXT: .byte {{.*}}
-// CHECK-NEXT: .byte {{.*}}
-// CHECK-NEXT: .p2align 1
-//
+// CHECK-NEXT: cbz r0, .LBB{{[0-9_]+}}
+// CHECK-NEXT: cmp r0, #1
+// CHECK-NEXT: it eq
+// CHECK-NEXT: uxtheq r2, r2
+// CHECK-NEXT: b .LBB{{[0-9_]+}}
 // CHECK-NEXT: .LBB{{[0-9_]+}}:
 // CHECK-NEXT: uxtb r2, r2
-// CHECK-NEXT: b .LBB{{[0-9_]+}}
-//
-// CHECK-NEXT: .LBB{{[0-9_]+}}:
-// CHECK-NEXT: uxth r2, r2
-//
-// CHECK-NEXT: .LBB{{[0-9_]+}}:
-// CHECK-NEXT: mov r1, r0
 #[no_mangle]
 #[expect(improper_ctypes_definitions)]
 extern "C" fn cmse_call_three_variants(

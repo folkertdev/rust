@@ -289,7 +289,7 @@ impl<'a, Ty> TyAndLayout<'a, Ty> {
     /// In other words, for any sequence of bytes, if we reset the these padding bytes to uninit,
     /// then these two sequences of bytes represent the same value (or they are both invalid).
     /// This is the "guaranteed" padding. There may be more bytes that are padding for some
-    /// but not all variants of this type; those are not included.
+    /// but not all variants of this type; those are not included (see [`Self::variant_extra_padding_ranges`]).
     /// (E.g. `Option<i8>` has no guaranteed padding so the empty range set is returned, but its `None` value still has padding).
     pub fn padding_ranges<C>(&self, cx: &C) -> Vec<Range<Size>>
     where
@@ -297,33 +297,51 @@ impl<'a, Ty> TyAndLayout<'a, Ty> {
     {
         let mut data = RangeSet::new();
         self.add_data_ranges(cx, Size::ZERO, &mut data);
+        uninit_ranges(&data, self.size)
+    }
 
-        // Find gaps between the data ranges.
-        let mut uninit_ranges = Vec::new();
-        let mut covered_until = Size::ZERO;
-        for &(offset, size) in data.0.iter() {
-            if offset > covered_until {
-                uninit_ranges.push(covered_until..offset);
-            }
-            covered_until = Ord::max(covered_until, offset + size);
-        }
+    /// The *extra* padding bytes, on top of the "guaranteed" padding returned by
+    /// [`Self::padding_ranges`], that appear when `variant_index` is the active variant of this
+    /// multi-variant enum: bytes that are data in some *other* variant but padding in this one.
+    /// The enum's tag and this variant's data are always preserved.
+    ///
+    /// The active variant's *own* nested enums are only accounted for by their guaranteed padding —
+    /// their variant-dependent padding must be cleared by recursing into them.
+    ///
+    /// Returns an empty vector for anything that is not a multi-variant enum.
+    pub fn variant_extra_padding_ranges<C>(
+        &self,
+        cx: &C,
+        variant_index: VariantIdx,
+    ) -> Vec<Range<Size>>
+    where
+        Ty: TyAbiInterface<'a, C> + Copy,
+    {
+        let Variants::Multiple { tag_field, .. } = self.variants else {
+            return Vec::new();
+        };
 
-        // Add trailing padding.
-        if self.size > covered_until {
-            uninit_ranges.push(covered_until..self.size);
-        }
+        // Bytes that are data in *some* variant (the complement of the guaranteed padding).
+        let mut any = RangeSet::new();
+        self.add_data_ranges(cx, Size::ZERO, &mut any);
 
-        uninit_ranges
+        // Bytes that are data in *this* variant, plus the always-live tag.
+        let mut this = RangeSet::new();
+        let tag = self.field(cx, tag_field.as_usize());
+        this.add_range(self.fields.offset(tag_field.as_usize()), tag.size);
+        self.for_variant(cx, variant_index).add_data_ranges(cx, Size::ZERO, &mut this);
+
+        // Padding specific to this variant: data in some variant, but not in this one.
+        any.difference(&this).0.iter().map(|&(offset, size)| offset..offset + size).collect()
     }
 
     /// Returns `true` if this type transitively contains a multi-variant enum, i.e. some of its
-    /// padding is only padding for *some* variants and can only be identified after reading a tag
-    /// at runtime.
+    /// padding depends on which variant is active and can only be identified by reading a tag at
+    /// runtime.
     ///
     /// When this returns `false`, [`Self::padding_ranges`] describes *all* of the type's padding.
-    /// When it returns `true`, [`Self::padding_ranges`] must not be relied on to clear padding,
-    /// because it does not account for enum tags (it treats them as padding) nor for the extra
-    /// padding of individual variants.
+    /// When it returns `true`, the extra per-variant padding also needs clearing (via
+    /// [`Self::variant_extra_padding_ranges`] after reading the tag).
     ///
     /// Unions are treated as not having variant-dependent padding: their active field cannot be
     /// determined at runtime, so the recursion stops there.
@@ -390,7 +408,11 @@ impl<'a, Ty> TyAndLayout<'a, Ty> {
                     }
                 }
             },
-            Variants::Multiple { variants, .. } => {
+            Variants::Multiple { variants, tag_field, .. } => {
+                // The tag is live data regardless of the active variant; without this, a
+                // direct-tagged enum's discriminant would be reported as padding.
+                let tag = self.field(cx, tag_field.as_usize());
+                out.add_range(base_offset + self.fields.offset(tag_field.as_usize()), tag.size);
                 for variant in variants.indices() {
                     let variant = self.for_variant(cx, variant);
                     variant.add_data_ranges(cx, base_offset, out);
@@ -398,4 +420,21 @@ impl<'a, Ty> TyAndLayout<'a, Ty> {
             }
         }
     }
+}
+
+/// Given the `data` ranges of a value of the given `size`, returns the complementary ranges: the
+/// bytes in `0..size` not covered by any data range (i.e. the padding).
+fn uninit_ranges(data: &RangeSet<Size>, size: Size) -> Vec<Range<Size>> {
+    let mut ranges = Vec::new();
+    let mut covered_until = Size::ZERO;
+    for &(offset, sz) in data.0.iter() {
+        if offset > covered_until {
+            ranges.push(covered_until..offset);
+        }
+        covered_until = Ord::max(covered_until, offset + sz);
+    }
+    if size > covered_until {
+        ranges.push(covered_until..size);
+    }
+    ranges
 }
