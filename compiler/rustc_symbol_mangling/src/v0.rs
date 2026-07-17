@@ -70,6 +70,7 @@ pub(super) fn mangle<'tcx>(
             ..
         }) => Some("by_ref"),
         ty::InstanceKind::Shim(ty::ShimKind::FutureDropPoll(_, _, _)) => Some("drop"),
+        ty::InstanceKind::Shim(ty::ShimKind::TailCall(_, _)) => Some("tail_call"),
         _ => None,
     };
 

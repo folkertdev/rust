@@ -644,6 +644,7 @@ fn characteristic_def_id_of_mono_item<'tcx>(
                 | ty::InstanceKind::Shim(ty::ShimKind::FnPtrAddr(..))
                 | ty::InstanceKind::Shim(ty::ShimKind::FutureDropPoll(..))
                 | ty::InstanceKind::Shim(ty::ShimKind::AsyncDropGlue(..))
+                | ty::InstanceKind::Shim(ty::ShimKind::TailCall(..))
                 | ty::InstanceKind::Shim(ty::ShimKind::AsyncDropGlueCtor(..)) => return None,
             };
 
@@ -827,6 +828,7 @@ fn mono_item_visibility<'tcx>(
         | InstanceKind::Shim(ShimKind::ConstructCoroutineInClosure { .. })
         | InstanceKind::Shim(ShimKind::DropGlue(..))
         | InstanceKind::Shim(ShimKind::Clone(..))
+        | InstanceKind::Shim(ShimKind::TailCall(..))
         | InstanceKind::Shim(ShimKind::FnPtrAddr(..)) => return Visibility::Hidden,
     };
 

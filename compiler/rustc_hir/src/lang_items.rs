@@ -377,6 +377,11 @@ language_item_table! {
     PollReady,               sym::Ready,               poll_ready_variant,         Target::Variant,        GenericRequirement::None;
     PollPending,             sym::Pending,             poll_pending_variant,       Target::Variant,        GenericRequirement::None;
 
+    TailNext,                sym::tail_next,           tail_next,                  Target::Enum,           GenericRequirement::None;
+    TailNextDone,            sym::tail_next_done,      tail_next_done_variant,     Target::Variant,        GenericRequirement::None;
+    TailNextCall,            sym::tail_next_call,      tail_next_call_variant,     Target::Variant,        GenericRequirement::None;
+    TailEval,                sym::tail_eval,           tail_eval_fn,               Target::Fn,             GenericRequirement::Exact(2);
+
     AsyncGenReady,           sym::AsyncGenReady,       async_gen_ready,            Target::Method(MethodKind::Inherent), GenericRequirement::Exact(1);
     AsyncGenPending,         sym::AsyncGenPending,     async_gen_pending,          Target::AssocConst,     GenericRequirement::Exact(1);
     AsyncGenFinished,        sym::AsyncGenFinished,    async_gen_finished,         Target::AssocConst,     GenericRequirement::Exact(1);

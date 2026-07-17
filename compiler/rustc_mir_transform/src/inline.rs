@@ -776,6 +776,7 @@ fn check_mir_is_available<'tcx, I: Inliner<'tcx>>(
         | InstanceKind::Shim(ShimKind::DropGlue(..))
         | InstanceKind::Shim(ShimKind::Clone(..))
         | InstanceKind::Shim(ShimKind::ThreadLocal(..))
+        | InstanceKind::Shim(ShimKind::TailCall(..))
         | InstanceKind::Shim(ShimKind::FnPtrAddr(..)) => return Ok(()),
     }
 

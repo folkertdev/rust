@@ -42,6 +42,22 @@ fn fn_sig_for_fn_abi<'tcx>(
         return tcx.mk_fn_sig_safe_rust_abi([], tcx.thread_local_ptr_ty(instance.def_id()));
     }
 
+    // The tail-call trampoline shim has signature `fn(Args) -> TailNext<Args, Ret>`, where `Args`
+    // is the tupled argument list of the original `fn(..) -> Ret`. This must match the body built
+    // by `build_tail_call_shim`.
+    if let InstanceKind::Shim(ShimKind::TailCall(def_id, tc_args)) = instance.def {
+        let sig = tcx.instantiate_bound_regions_with_erased(
+            tcx.fn_sig(def_id).instantiate(tcx, tc_args).skip_norm_wip(),
+        );
+        let args_tuple = Ty::new_tup(tcx, sig.inputs());
+        let tail_next_ty = Ty::new_adt(
+            tcx,
+            tcx.adt_def(tcx.require_lang_item(LangItem::TailNext, DUMMY_SP)),
+            tcx.mk_args(&[args_tuple.into(), sig.output().into()]),
+        );
+        return tcx.mk_fn_sig_safe_rust_abi([args_tuple], tail_next_ty);
+    }
+
     let ty = instance.ty(tcx, typing_env);
     match *ty.kind() {
         ty::FnDef(def_id, args) => {

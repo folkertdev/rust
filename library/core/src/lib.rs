@@ -338,6 +338,7 @@ pub mod alloc;
 // note: does not need to be public
 mod bool;
 mod escape;
+mod tail_call;
 mod tuple;
 mod unit;
 #[cfg_attr(feature = "nightly", not(bootstrap))]

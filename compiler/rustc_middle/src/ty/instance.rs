@@ -195,6 +195,14 @@ pub enum ShimKind<'tcx> {
     /// async_drop_in_place poll function implementation (for generated coroutine).
     /// `Ty` here is `async_drop_in_place<T>::{closure}` coroutine type, not just `T`
     AsyncDropGlue(DefId, Ty<'tcx>),
+
+    /// Trampoline shim for a function that uses guaranteed tail calls (`become`), used on targets
+    /// that cannot lower tail calls directly.
+    ///
+    /// The `DefId` is the `become`-using function; the body is a monomorphic copy of it that
+    /// returns a `TailNext<Args, Ret>` continuation instead of performing tail calls. The
+    /// `GenericArgsRef` are the (concrete) generic arguments of that function.
+    TailCall(DefId, GenericArgsRef<'tcx>),
 }
 
 impl<'tcx> Instance<'tcx> {
@@ -347,7 +355,8 @@ impl<'tcx> ShimKind<'tcx> {
             | ShimKind::FnPtrAddr(def_id, _)
             | ShimKind::FutureDropPoll(def_id, _, _)
             | ShimKind::AsyncDropGlue(def_id, _)
-            | ShimKind::AsyncDropGlueCtor(def_id, _) => def_id,
+            | ShimKind::AsyncDropGlueCtor(def_id, _)
+            | ShimKind::TailCall(def_id, _) => def_id,
         }
     }
 
@@ -366,7 +375,8 @@ impl<'tcx> ShimKind<'tcx> {
             | ShimKind::ConstructCoroutineInClosure { .. }
             | ShimKind::DropGlue(..)
             | ShimKind::Clone(..)
-            | ShimKind::FnPtrAddr(..) => None,
+            | ShimKind::FnPtrAddr(..)
+            | ShimKind::TailCall(..) => None,
         }
     }
 
@@ -377,6 +387,7 @@ impl<'tcx> ShimKind<'tcx> {
             ShimKind::FutureDropPoll(_, _, _) => false,
             ShimKind::AsyncDropGlue(_, _) => false,
             ShimKind::ThreadLocal(_) => false,
+            ShimKind::TailCall(..) => false,
             _ => true,
         }
     }
@@ -389,6 +400,7 @@ impl<'tcx> ShimKind<'tcx> {
             | ShimKind::FnPtr(..)
             | ShimKind::DropGlue(_, Some(_))
             | ShimKind::FutureDropPoll(..)
+            | ShimKind::TailCall(..)
             | ShimKind::AsyncDropGlue(_, _) => false,
             ShimKind::AsyncDropGlueCtor(_, _) => false,
             ShimKind::ClosureOnce { .. }
