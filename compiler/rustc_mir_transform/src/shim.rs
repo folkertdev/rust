@@ -6,7 +6,6 @@ use rustc_hir as hir;
 use rustc_hir::def_id::DefId;
 use rustc_hir::lang_items::LangItem;
 use rustc_index::{Idx, IndexVec};
-use rustc_middle::mir::interpret::{CTFE_ALLOC_SALT, Pointer, Scalar};
 use rustc_middle::mir::visit::{MutVisitor, PlaceContext};
 use rustc_middle::mir::*;
 use rustc_middle::query::Providers;
@@ -572,15 +571,19 @@ fn build_tail_call_shim<'tcx>(
     let tail_next_did = tcx.require_lang_item(LangItem::TailNext, span);
     let tail_next_adt = tcx.adt_def(tail_next_did);
     let tail_next_args = tcx.mk_args(&[args_tuple.into(), ret.into()]);
-    let tail_next_ty = Ty::new_adt(tcx, tail_next_adt, tail_next_args);
+    let tail_next_ty = crate::tail_call::tail_next_ty(tcx, args_tuple, ret);
     let done_variant =
         tail_next_adt.variant_index_with_id(tcx.require_lang_item(LangItem::TailNextDone, span));
     let call_variant =
         tail_next_adt.variant_index_with_id(tcx.require_lang_item(LangItem::TailNextCall, span));
 
-    // The type of a shim function pointer: `fn(args_tuple) -> TailNext<args_tuple, ret>`.
-    let shim_sig = tcx.mk_fn_sig_safe_rust_abi([args_tuple], tail_next_ty);
-    let shim_fn_ptr_ty = Ty::new_fn_ptr(tcx, ty::Binder::dummy(shim_sig));
+    // Builds `TailNext::Done(value)`.
+    let make_done = |value: Operand<'tcx>| {
+        Rvalue::Aggregate(
+            Box::new(AggregateKind::Adt(tail_next_did, done_variant, tail_next_args, None, None)),
+            [value].into_iter().collect(),
+        )
+    };
 
     // Shift every local up by 2 to free `_0` (the new `TailNext` return place) and `_1` (the
     // incoming argument tuple). The original return place `_0` becomes `_2`, the original arguments
@@ -644,43 +647,26 @@ fn build_tail_call_shim<'tcx>(
     for (bb, rewrite) in rewrites {
         match rewrite {
             Rewrite::Done => {
-                // The original return place `_0` is now `_2`.
-                let value = Operand::Move(Place::from(Local::from_usize(2)));
-                let rvalue = Rvalue::Aggregate(
-                    Box::new(AggregateKind::Adt(
-                        tail_next_did,
-                        done_variant,
-                        tail_next_args,
-                        None,
-                        None,
-                    )),
-                    [value].into_iter().collect(),
-                );
-                let stmt = Statement::new(
+                // The original return place `_0` is now `_2`; wrap it in `TailNext::Done`. The
+                // terminator stays `Return`, now returning the `TailNext` value in `_0`.
+                let rvalue = make_done(Operand::Move(Place::from(Local::from_usize(2))));
+                body.basic_blocks_mut()[bb].statements.push(Statement::new(
                     source_info,
                     StatementKind::Assign(Box::new((Place::return_place(), rvalue))),
-                );
-                body.basic_blocks_mut()[bb].statements.push(stmt);
-                // The terminator remains `Return`, now returning the `TailNext` value in `_0`.
+                ));
             }
             Rewrite::Call { callee, callee_args, arg_ops } if tcx.uses_tail_call(callee) => {
                 // The callee itself uses `become`: continue the trampoline by returning a
                 // `TailNext::Call` naming the callee's own tail-call shim.
-                let callee_shim = ty::Instance {
-                    def: ty::InstanceKind::Shim(ty::ShimKind::TailCall(callee, callee_args)),
-                    args: callee_args,
-                };
-                let alloc_id = tcx.reserve_and_set_fn_alloc(callee_shim, CTFE_ALLOC_SALT);
-                let fn_ptr = Operand::Constant(Box::new(ConstOperand {
+                let (shim_ptr_local, shim_stmt) = crate::tail_call::reify_tail_call_shim(
+                    tcx,
+                    &mut body.local_decls,
+                    callee,
+                    callee_args,
+                    args_tuple,
+                    ret,
                     span,
-                    user_ty: None,
-                    const_: Const::Val(
-                        ConstValue::Scalar(Scalar::from_pointer(Pointer::from(alloc_id), &tcx)),
-                        shim_fn_ptr_ty,
-                    ),
-                }));
-
-                // Bundle the arguments into a tuple.
+                );
                 let tuple_local = body.local_decls.push(LocalDecl::new(args_tuple, span));
                 let tuple_stmt = Statement::new(
                     source_info,
@@ -692,8 +678,7 @@ fn build_tail_call_shim<'tcx>(
                         ),
                     ))),
                 );
-
-                let rvalue = Rvalue::Aggregate(
+                let call_rvalue = Rvalue::Aggregate(
                     Box::new(AggregateKind::Adt(
                         tail_next_did,
                         call_variant,
@@ -701,14 +686,17 @@ fn build_tail_call_shim<'tcx>(
                         None,
                         None,
                     )),
-                    [fn_ptr, Operand::Move(Place::from(tuple_local))].into_iter().collect(),
+                    [Operand::Move(Place::from(shim_ptr_local)), Operand::Move(Place::from(tuple_local))]
+                        .into_iter()
+                        .collect(),
                 );
                 let call_stmt = Statement::new(
                     source_info,
-                    StatementKind::Assign(Box::new((Place::return_place(), rvalue))),
+                    StatementKind::Assign(Box::new((Place::return_place(), call_rvalue))),
                 );
 
                 let block = &mut body.basic_blocks_mut()[bb];
+                block.statements.push(shim_stmt);
                 block.statements.push(tuple_stmt);
                 block.statements.push(call_stmt);
                 block.terminator_mut().kind = TerminatorKind::Return;
@@ -718,22 +706,11 @@ fn build_tail_call_shim<'tcx>(
                 // directly and wrap its result in `TailNext::Done`, ending the trampoline. This
                 // needs only the callee's signature, not its MIR (important cross-crate).
                 let result_local = body.local_decls.push(LocalDecl::new(ret, span));
-
-                // The block the ordinary call returns to: `_0 = Done(move result); return`.
-                let done_rvalue = Rvalue::Aggregate(
-                    Box::new(AggregateKind::Adt(
-                        tail_next_did,
-                        done_variant,
-                        tail_next_args,
-                        None,
-                        None,
-                    )),
-                    [Operand::Move(Place::from(result_local))].into_iter().collect(),
-                );
+                let done = make_done(Operand::Move(Place::from(result_local)));
                 let done_block = body.basic_blocks_mut().push(BasicBlockData::new_stmts(
                     vec![Statement::new(
                         source_info,
-                        StatementKind::Assign(Box::new((Place::return_place(), done_rvalue))),
+                        StatementKind::Assign(Box::new((Place::return_place(), done))),
                     )],
                     Some(Terminator {
                         source_info,
