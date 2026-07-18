@@ -1137,9 +1137,9 @@ rustc_queries! {
     /// This drives two things: forcing the MIR to be encoded cross-crate (so downstream crates can
     /// build the tail-call trampoline shim), and, on targets without guaranteed tail call support,
     /// deciding whether a `become` of this function needs a shim or can be an ordinary call.
-    query uses_tail_call(key: LocalDefId) -> bool {
+    query uses_tail_call(key: DefId) -> bool {
         desc { "checking if `{}` contains tail calls", tcx.def_path_str(key) }
-        cache_on_disk
+        separate_provide_extern
     }
 
     /// Returns the types assumed to be well formed while "inside" of the given item.

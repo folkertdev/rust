@@ -663,8 +663,9 @@ fn build_tail_call_shim<'tcx>(
                 body.basic_blocks_mut()[bb].statements.push(stmt);
                 // The terminator remains `Return`, now returning the `TailNext` value in `_0`.
             }
-            Rewrite::Call { callee, callee_args, arg_ops } => {
-                // A pointer to the callee's own tail-call shim.
+            Rewrite::Call { callee, callee_args, arg_ops } if tcx.uses_tail_call(callee) => {
+                // The callee itself uses `become`: continue the trampoline by returning a
+                // `TailNext::Call` naming the callee's own tail-call shim.
                 let callee_shim = ty::Instance {
                     def: ty::InstanceKind::Shim(ty::ShimKind::TailCall(callee, callee_args)),
                     args: callee_args,
@@ -711,6 +712,57 @@ fn build_tail_call_shim<'tcx>(
                 block.statements.push(tuple_stmt);
                 block.statements.push(call_stmt);
                 block.terminator_mut().kind = TerminatorKind::Return;
+            }
+            Rewrite::Call { callee, callee_args, arg_ops } => {
+                // Leaf: the callee does not itself use `become`, so it needs no shim. Call it
+                // directly and wrap its result in `TailNext::Done`, ending the trampoline. This
+                // needs only the callee's signature, not its MIR (important cross-crate).
+                let result_local = body.local_decls.push(LocalDecl::new(ret, span));
+
+                // The block the ordinary call returns to: `_0 = Done(move result); return`.
+                let done_rvalue = Rvalue::Aggregate(
+                    Box::new(AggregateKind::Adt(
+                        tail_next_did,
+                        done_variant,
+                        tail_next_args,
+                        None,
+                        None,
+                    )),
+                    [Operand::Move(Place::from(result_local))].into_iter().collect(),
+                );
+                let done_block = body.basic_blocks_mut().push(BasicBlockData::new_stmts(
+                    vec![Statement::new(
+                        source_info,
+                        StatementKind::Assign(Box::new((Place::return_place(), done_rvalue))),
+                    )],
+                    Some(Terminator {
+                        source_info,
+                        kind: TerminatorKind::Return,
+                        attributes: ThinVec::new(),
+                    }),
+                    false,
+                ));
+
+                let callee_op = Operand::Constant(Box::new(ConstOperand {
+                    span,
+                    user_ty: None,
+                    const_: Const::zero_sized(Ty::new_fn_def(
+                        tcx,
+                        callee,
+                        ty::Binder::dummy(callee_args),
+                    )),
+                }));
+                let call_args: Box<[Spanned<Operand<'tcx>>]> =
+                    arg_ops.into_iter().map(|op| Spanned { node: op, span }).collect();
+                body.basic_blocks_mut()[bb].terminator_mut().kind = TerminatorKind::Call {
+                    func: callee_op,
+                    args: call_args,
+                    destination: Place::from(result_local),
+                    target: Some(done_block),
+                    unwind: UnwindAction::Continue,
+                    call_source: CallSource::Misc,
+                    fn_span: span,
+                };
             }
         }
     }

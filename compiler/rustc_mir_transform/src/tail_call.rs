@@ -10,6 +10,9 @@ use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::Spanned;
 
 /// Returns `true` if the body of `def_id` contains a guaranteed tail call (`become`).
+///
+/// Cross-crate results are read from metadata; the local provider (this function) only ever runs
+/// for local definitions.
 fn uses_tail_call(tcx: TyCtxt<'_>, def_id: LocalDefId) -> bool {
     // `become` can only appear in function-like bodies.
     if !tcx.def_kind(def_id).is_fn_like() {
@@ -39,11 +42,7 @@ impl<'tcx> crate::MirPass<'tcx> for LowerTailCall {
     fn run_pass(&self, tcx: TyCtxt<'tcx>, body: &mut Body<'tcx>) {
         let def_id = body.source.def_id();
         // Only rewrite the actual function body (not promoteds) of `become`-using functions.
-        if body.source.promoted.is_some() {
-            return;
-        }
-        let Some(local) = def_id.as_local() else { return };
-        if !tcx.uses_tail_call(local) {
+        if body.source.promoted.is_some() || !tcx.uses_tail_call(def_id) {
             return;
         }
 
