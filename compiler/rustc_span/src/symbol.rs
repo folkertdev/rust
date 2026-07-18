@@ -2086,6 +2086,7 @@ symbols! {
         tail_next,
         tail_next_call,
         tail_next_done,
+        tail_shim,
         target,
         target_abi,
         target_arch,

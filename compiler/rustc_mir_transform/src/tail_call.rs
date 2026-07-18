@@ -1,10 +1,11 @@
 use rustc_data_structures::thin_vec::ThinVec;
+use rustc_hir::Safety;
 use rustc_hir::def_id::LocalDefId;
 use rustc_hir::lang_items::LangItem;
 use rustc_index::IndexVec;
-use rustc_middle::mir::interpret::{CTFE_ALLOC_SALT, Pointer, Scalar};
 use rustc_middle::mir::*;
 use rustc_middle::query::Providers;
+use rustc_middle::ty::adjustment::PointerCoercion;
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::Spanned;
 
@@ -55,16 +56,6 @@ impl<'tcx> crate::MirPass<'tcx> for LowerTailCall {
             return;
         }
 
-        // Ship non-generic first: generic `become`-using functions would need a way to name a
-        // polymorphic shim instance, which the concrete `reserve_and_set_fn_alloc` const cannot do.
-        if tcx.generics_of(def_id).requires_monomorphization(tcx) {
-            tcx.dcx().span_err(
-                body.span,
-                "the portable guaranteed tail-call fallback does not yet support generic functions",
-            );
-            return;
-        }
-
         let span = body.span;
         let source_info = SourceInfo::outermost(span);
 
@@ -73,29 +64,35 @@ impl<'tcx> crate::MirPass<'tcx> for LowerTailCall {
         let arg_locals: Vec<Local> = body.args_iter().collect();
         let args_tuple = Ty::new_tup(tcx, &inputs);
 
-        // `TailNext<args_tuple, ret_ty>`.
+        // `TailNext<args_tuple, ret_ty>` and the shim function-pointer type.
         let tail_next_ty = Ty::new_adt(
             tcx,
             tcx.adt_def(tcx.require_lang_item(LangItem::TailNext, span)),
             tcx.mk_args(&[args_tuple.into(), ret_ty.into()]),
         );
+        let shim_fn_ptr_ty = Ty::new_fn_ptr(
+            tcx,
+            ty::Binder::dummy(tcx.mk_fn_sig_safe_rust_abi([args_tuple], tail_next_ty)),
+        );
 
-        // A pointer to this function's own tail-call shim (concrete, since we're non-generic).
-        let shim_args = ty::GenericArgs::identity_for_item(tcx, def_id);
-        let shim = ty::Instance {
-            def: ty::InstanceKind::Shim(ty::ShimKind::TailCall(def_id, shim_args)),
-            args: shim_args,
-        };
-        let shim_fn_ptr_ty =
-            Ty::new_fn_ptr(tcx, ty::Binder::dummy(tcx.mk_fn_sig_safe_rust_abi([args_tuple], tail_next_ty)));
-        let alloc_id = tcx.reserve_and_set_fn_alloc(shim, CTFE_ALLOC_SALT);
-        let shim_ptr = Operand::Constant(Box::new(ConstOperand {
+        // Name this function's own tail-call shim via the `tail_shim` lang item: reifying
+        // `tail_shim::<Self, Args, Ret>` to a function pointer resolves to `Shim(TailCall(self))`,
+        // and — unlike a concrete fn-alloc constant — carries through monomorphization, so this
+        // works for generic functions too.
+        let self_fn_ty = Ty::new_fn_def(
+            tcx,
+            def_id,
+            ty::Binder::dummy(ty::GenericArgs::identity_for_item(tcx, def_id)),
+        );
+        let tail_shim_did = tcx.require_lang_item(LangItem::TailShim, span);
+        let tail_shim_handle = Operand::Constant(Box::new(ConstOperand {
             span,
             user_ty: None,
-            const_: Const::Val(
-                ConstValue::Scalar(Scalar::from_pointer(Pointer::from(alloc_id), &tcx)),
-                shim_fn_ptr_ty,
-            ),
+            const_: Const::zero_sized(Ty::new_fn_def(
+                tcx,
+                tail_shim_did,
+                ty::Binder::dummy(tcx.mk_args(&[self_fn_ty.into(), args_tuple.into(), ret_ty.into()])),
+            )),
         }));
 
         // `tail_eval::<args_tuple, ret_ty>`.
@@ -111,27 +108,45 @@ impl<'tcx> crate::MirPass<'tcx> for LowerTailCall {
             )),
         }));
 
-        // Drop everything but the return place and the argument locals, then add the tuple local.
+        // Drop everything but the return place and the argument locals, then add fresh locals.
         body.local_decls.truncate(body.arg_count + 1);
         let tuple_local = body.local_decls.push(LocalDecl::new(args_tuple, span));
+        let shim_ptr_local = body.local_decls.push(LocalDecl::new(shim_fn_ptr_ty, span));
         body.var_debug_info.clear();
 
-        // bb0: `_tuple = (move a, move b, ..); _0 = tail_eval(shim, move _tuple) -> bb1`.
+        // bb0:
+        //   _shim = ReifyFnPointer(tail_shim::<Self, Args, Ret>);
+        //   _tuple = (move a, move b, ..);
+        //   _0 = tail_eval(move _shim, move _tuple) -> bb1
+        let shim_cast = Rvalue::Cast(
+            CastKind::PointerCoercion(
+                PointerCoercion::ReifyFnPointer(Safety::Safe),
+                CoercionSource::Implicit,
+            ),
+            tail_shim_handle,
+            shim_fn_ptr_ty,
+        );
         let tuple_rvalue = Rvalue::Aggregate(
             Box::new(AggregateKind::Tuple),
             arg_locals.iter().map(|&l| Operand::Move(Place::from(l))).collect(),
         );
         let bb0 = BasicBlockData::new_stmts(
-            vec![Statement::new(
-                source_info,
-                StatementKind::Assign(Box::new((Place::from(tuple_local), tuple_rvalue))),
-            )],
+            vec![
+                Statement::new(
+                    source_info,
+                    StatementKind::Assign(Box::new((Place::from(shim_ptr_local), shim_cast))),
+                ),
+                Statement::new(
+                    source_info,
+                    StatementKind::Assign(Box::new((Place::from(tuple_local), tuple_rvalue))),
+                ),
+            ],
             Some(Terminator {
                 source_info,
                 kind: TerminatorKind::Call {
                     func: tail_eval,
                     args: [
-                        Spanned { node: shim_ptr, span },
+                        Spanned { node: Operand::Move(Place::from(shim_ptr_local)), span },
                         Spanned { node: Operand::Move(Place::from(tuple_local)), span },
                     ]
                     .into_iter()

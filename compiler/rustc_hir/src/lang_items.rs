@@ -381,6 +381,7 @@ language_item_table! {
     TailNextDone,            sym::tail_next_done,      tail_next_done_variant,     Target::Variant,        GenericRequirement::None;
     TailNextCall,            sym::tail_next_call,      tail_next_call_variant,     Target::Variant,        GenericRequirement::None;
     TailEval,                sym::tail_eval,           tail_eval_fn,               Target::Fn,             GenericRequirement::Exact(2);
+    TailShim,                sym::tail_shim,           tail_shim_fn,               Target::Fn,             GenericRequirement::Exact(3);
 
     AsyncGenReady,           sym::AsyncGenReady,       async_gen_ready,            Target::Method(MethodKind::Inherent), GenericRequirement::Exact(1);
     AsyncGenPending,         sym::AsyncGenPending,     async_gen_pending,          Target::AssocConst,     GenericRequirement::Exact(1);
