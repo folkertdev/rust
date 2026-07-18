@@ -27,15 +27,17 @@ impl<'tcx> TyCtxt<'tcx> {
             }
         }
 
-        // A shim created by `#[track_caller]` should not inherit any attributes
-        // that modify the symbol name. Failing to remove these attributes from
-        // the shim leads to errors like `symbol `foo` is already defined`.
+        // A shim that shares its function's `DefId` should not inherit any attributes that modify
+        // the symbol name, or its symbol would collide with the function's own (e.g. `#[no_mangle]`),
+        // leading to errors like `symbol `foo` is already defined`.
         //
-        // A `ClosureOnceShim` with the track_caller attribute does not have a symbol,
-        // and therefore can be skipped here.
-        if let InstanceKind::Shim(ShimKind::Reify(_, _)) = instance_kind
-            && attrs.flags.contains(CodegenFnAttrFlags::TRACK_CALLER)
-        {
+        // This applies to the tail-call trampoline shim (which always shares the symbol) and to a
+        // `ReifyShim` created by `#[track_caller]`. (A `ClosureOnceShim` with the track_caller
+        // attribute does not have a symbol, and therefore can be skipped here.)
+        let shares_symbol_with_item = matches!(instance_kind, InstanceKind::Shim(ShimKind::TailCall(..)))
+            || (matches!(instance_kind, InstanceKind::Shim(ShimKind::Reify(_, _)))
+                && attrs.flags.contains(CodegenFnAttrFlags::TRACK_CALLER));
+        if shares_symbol_with_item {
             if attrs.flags.contains(CodegenFnAttrFlags::NO_MANGLE) {
                 attrs.to_mut().flags.remove(CodegenFnAttrFlags::NO_MANGLE);
             }

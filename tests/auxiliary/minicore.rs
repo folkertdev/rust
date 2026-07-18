@@ -334,6 +334,33 @@ pub trait Fn<Args: Tuple>: FnMut<Args> {
     extern "rust-call" fn call(&self, args: Args) -> Self::Output;
 }
 
+// Support for the portable guaranteed-tail-call (`become`) fallback.
+#[lang = "tail_next"]
+pub enum TailNext<Args, Ret> {
+    #[lang = "tail_next_done"]
+    Done(Ret),
+    #[lang = "tail_next_call"]
+    Call(fn(Args) -> TailNext<Args, Ret>, Args),
+}
+
+#[lang = "tail_eval"]
+pub fn tail_eval<Args, Ret>(mut f: fn(Args) -> TailNext<Args, Ret>, mut args: Args) -> Ret {
+    loop {
+        match f(args) {
+            TailNext::Call(next_f, next_args) => {
+                f = next_f;
+                args = next_args;
+            }
+            TailNext::Done(ret) => return ret,
+        }
+    }
+}
+
+#[lang = "tail_shim"]
+fn tail_shim<F, Args, Ret>(_args: Args) -> TailNext<Args, Ret> {
+    loop {}
+}
+
 #[lang = "dispatch_from_dyn"]
 trait DispatchFromDyn<T> {}
 
