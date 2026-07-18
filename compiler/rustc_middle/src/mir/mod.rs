@@ -328,6 +328,18 @@ pub struct Body<'tcx> {
     #[type_foldable(identity)]
     #[type_visitable(ignore)]
     pub function_coverage_info: Option<Box<coverage::FunctionCoverageInfo>>,
+
+    /// For a function that uses guaranteed tail calls (`become`) on a target using the portable
+    /// tail-call fallback: a copy of this body from *before* it was rewritten into a `tail_eval`
+    /// trampoline, still containing its `TailCall` terminators. This is the source from which
+    /// `build_tail_call_shim` builds the function's tail-call shim, and it rides along with
+    /// `optimized_mir` so the shim can be built cross-crate.
+    ///
+    /// Folded/visited with identity: it is only ever consumed from the polymorphic `optimized_mir`
+    /// and instantiated separately by the shim builder, never through a monomorphized trampoline.
+    #[type_foldable(identity)]
+    #[type_visitable(ignore)]
+    pub tail_call_shim_source: Option<Box<Body<'tcx>>>,
 }
 
 impl<'tcx> Body<'tcx> {
@@ -371,6 +383,7 @@ impl<'tcx> Body<'tcx> {
             tainted_by_errors,
             coverage_info_hi: None,
             function_coverage_info: None,
+            tail_call_shim_source: None,
         };
         body.is_polymorphic = body.has_non_region_param();
         body
@@ -402,6 +415,7 @@ impl<'tcx> Body<'tcx> {
             tainted_by_errors: None,
             coverage_info_hi: None,
             function_coverage_info: None,
+            tail_call_shim_source: None,
         };
         body.is_polymorphic = body.has_non_region_param();
         body

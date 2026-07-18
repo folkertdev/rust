@@ -24,17 +24,8 @@ fn uses_tail_call(tcx: TyCtxt<'_>, def_id: LocalDefId) -> bool {
         .any(|term| matches!(term.kind, TerminatorKind::TailCall { .. }))
 }
 
-/// Captures a copy of `def_id`'s MIR that still contains its `TailCall` terminators, to serve as
-/// the source for its tail-call trampoline shim.
-///
-/// This must be forced *before* `optimized_mir` steals the drops-elaborated body and (on fallback
-/// targets) rewrites it into a `tail_eval` trampoline.
-fn mir_tail_call_shim_source<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) -> Body<'tcx> {
-    tcx.mir_drops_elaborated_and_const_checked(def_id).borrow().clone()
-}
-
 pub(crate) fn provide(providers: &mut Providers) {
-    *providers = Providers { uses_tail_call, mir_tail_call_shim_source, ..*providers };
+    *providers = Providers { uses_tail_call, ..*providers };
 }
 
 /// Replaces the body of a `become`-using function with a trampoline that drives its tail-call shim

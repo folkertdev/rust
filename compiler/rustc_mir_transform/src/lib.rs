@@ -828,14 +828,17 @@ fn inner_optimized_mir(tcx: TyCtxt<'_>, did: LocalDefId) -> Body<'_> {
         Some(other) => panic!("do not use `optimized_mir` for constants: {other:?}"),
     }
     debug!("about to call mir_drops_elaborated...");
-    // Capture the tail-call shim source before we steal the drops-elaborated body below, since (on
-    // the portable tail-call fallback) the body gets rewritten into a `tail_eval` trampoline, which
-    // would otherwise destroy the `TailCall` terminators the shim is built from.
-    if tcx.uses_tail_call(did) {
-        tcx.ensure_done().mir_tail_call_shim_source(did);
-    }
     let body = tcx.mir_drops_elaborated_and_const_checked(did).steal();
     let mut body = remap_mir_for_const_eval_select(tcx, body, hir::Constness::NotConst);
+
+    // On the portable tail-call fallback, stash a copy of the pre-trampoline body (still containing
+    // its `TailCall` terminators) before the `LowerTailCall` pass rewrites it into a `tail_eval`
+    // trampoline. `build_tail_call_shim` builds the shim from this, and because it rides along with
+    // `optimized_mir` it is also available cross-crate.
+    if tcx.uses_tail_call(did) {
+        let source = body.clone();
+        body.tail_call_shim_source = Some(Box::new(source));
+    }
 
     if body.tainted_by_errors.is_some() {
         return body;

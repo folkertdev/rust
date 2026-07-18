@@ -551,9 +551,14 @@ fn build_tail_call_shim<'tcx>(
     let source_info = SourceInfo::outermost(span);
 
     // Clone and monomorphize the pre-trampoline body, which still contains `TailCall` terminators.
-    // `optimized_mir` replaces the real body with a `tail_eval` trampoline, so we source from the
-    // dedicated `mir_tail_call_shim_source` query (captured before that rewrite).
-    let source = tcx.mir_tail_call_shim_source(def_id.expect_local());
+    // `optimized_mir` replaces the real body with a `tail_eval` trampoline, so the pre-trampoline
+    // body is stashed on `optimized_mir` as `tail_call_shim_source` (this also makes it available
+    // cross-crate, since it is encoded alongside `optimized_mir`).
+    let source = tcx
+        .optimized_mir(def_id)
+        .tail_call_shim_source
+        .as_deref()
+        .expect("tail-call shim requested for a body without a stashed shim source");
     let mut body =
         EarlyBinder::bind(tcx, source.clone()).instantiate(tcx, args).skip_norm_wip();
 
