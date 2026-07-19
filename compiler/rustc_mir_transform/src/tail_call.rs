@@ -94,8 +94,12 @@ pub(super) struct LowerTailCall;
 impl<'tcx> crate::MirPass<'tcx> for LowerTailCall {
     fn run_pass(&self, tcx: TyCtxt<'tcx>, body: &mut Body<'tcx>) {
         let def_id = body.source.def_id();
-        // Only rewrite the actual function body (not promoteds) of `become`-using functions.
-        if body.source.promoted.is_some() || !tcx.uses_tail_call(def_id) {
+        // Only rewrite `become`-using function bodies (not promoteds), and only on targets that use
+        // the fallback rather than native `musttail`.
+        if !tcx.sess.use_tail_call_fallback()
+            || body.source.promoted.is_some()
+            || !tcx.uses_tail_call(def_id)
+        {
             return;
         }
 

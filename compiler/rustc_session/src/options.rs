@@ -2456,6 +2456,9 @@ options! {
     force_intrinsic_fallback: bool = (false, parse_bool, [TRACKED],
         "always use the fallback body of an intrinsic, if it has one, instead of lowering \
         the intrinsic in the codegen backend (default: no)."),
+    force_tail_call_fallback: bool = (false, parse_bool, [TRACKED],
+        "force `become` to use the portable trampoline fallback instead of a native `musttail` \
+        call, on all targets (default: no)"),
     force_unstable_if_unmarked: bool = (false, parse_bool, [TRACKED],
         "force all crates to be `rustc_private` unstable (default: no)"),
     function_return: FunctionReturn = (FunctionReturn::default(), parse_function_return, [TRACKED],

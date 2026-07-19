@@ -945,6 +945,16 @@ impl Session {
         self.opts.cg.panic.unwrap_or(self.target.panic_strategy)
     }
 
+    /// Whether guaranteed tail calls (`become`) must use the portable trampoline fallback on this
+    /// target, instead of lowering to a native `musttail` call. This is the case on targets that
+    /// cannot lower guaranteed tail calls, and can be forced everywhere for testing with
+    /// `-Zforce-tail-call-fallback`.
+    pub fn use_tail_call_fallback(&self) -> bool {
+        self.opts.unstable_opts.force_tail_call_fallback
+            // 32-bit PowerPC cannot lower guaranteed tail calls natively.
+            || self.target.arch == Arch::PowerPC
+    }
+
     pub fn fewer_names(&self) -> bool {
         if let Some(fewer_names) = self.opts.unstable_opts.fewer_names {
             fewer_names

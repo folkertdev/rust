@@ -1118,8 +1118,9 @@ fn should_encode_mir(
                 // Functions that use guaranteed tail calls (`become`) need their MIR available
                 // cross-crate so downstream crates can build the tail-call trampoline shim. A
                 // `TailCall` terminator makes a body non-inlinable, so this cannot piggyback on
-                // `cross_crate_inlinable` and must be an independent condition.
-                || tcx.uses_tail_call(def_id.to_def_id());
+                // `cross_crate_inlinable` and must be an independent condition. Only needed when the
+                // fallback is active (otherwise the body keeps its `TailCall`s and uses `musttail`).
+                || (tcx.sess.use_tail_call_fallback() && tcx.uses_tail_call(def_id.to_def_id()));
             // Comptime fns do not have optimized MIR at all.
             let opt =
                 opt && !matches!(tcx.constness(def_id), hir::Constness::Const { always: true });
@@ -1825,8 +1826,12 @@ impl<'a, 'tcx> EncodeContext<'a, 'tcx> {
                 self.tables
                     .cross_crate_inlinable
                     .set(def_id.to_def_id().index, self.tcx.cross_crate_inlinable(def_id));
-                // Only record the `true` case; the table defaults to `false` when absent.
-                if self.tcx.uses_tail_call(def_id.to_def_id()) {
+                // Record whether a tail-call shim is available for this function (only built when
+                // the fallback is active). Only the `true` case is stored; the table defaults to
+                // `false` when absent.
+                if self.tcx.sess.use_tail_call_fallback()
+                    && self.tcx.uses_tail_call(def_id.to_def_id())
+                {
                     self.tables.uses_tail_call.set(def_id.to_def_id().index, true);
                 }
                 record!(self.tables.closure_saved_names_of_captured_variables[def_id.to_def_id()]

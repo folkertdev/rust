@@ -457,8 +457,11 @@ fn mir_promoted(
     // the `has_ffi_unwind_calls` query uses the raw mir, so make sure it is run.
     tcx.ensure_done().has_ffi_unwind_calls(def);
 
-    // the `uses_tail_call` query uses the raw mir, so make sure it is run.
-    tcx.ensure_done().uses_tail_call(def.to_def_id());
+    // the `uses_tail_call` query uses the raw mir, so make sure it is run before it is stolen
+    // (only needed when the tail-call fallback is active).
+    if tcx.sess.use_tail_call_fallback() {
+        tcx.ensure_done().uses_tail_call(def.to_def_id());
+    }
 
     // the `by_move_body` query uses the raw mir, so make sure it is run.
     if tcx.needs_coroutine_by_move_body_def_id(def.to_def_id()) {
@@ -835,7 +838,7 @@ fn inner_optimized_mir(tcx: TyCtxt<'_>, did: LocalDefId) -> Body<'_> {
     // its `TailCall` terminators) before the `LowerTailCall` pass rewrites it into a `tail_eval`
     // trampoline. `build_tail_call_shim` builds the shim from this, and because it rides along with
     // `optimized_mir` it is also available cross-crate.
-    if tcx.uses_tail_call(did.to_def_id()) {
+    if tcx.sess.use_tail_call_fallback() && tcx.uses_tail_call(did.to_def_id()) {
         let source = body.clone();
         body.tail_call_shim_source = Some(Box::new(source));
     }
