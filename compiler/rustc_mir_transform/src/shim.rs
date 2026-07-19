@@ -128,7 +128,7 @@ fn make_shim<'tcx>(tcx: TyCtxt<'tcx>, shim: ty::ShimKind<'tcx>) -> Body<'tcx> {
             build_drop_shim(tcx, def_id, ty, ty::TypingEnv::post_analysis(tcx, def_id))
         }
         ty::ShimKind::ThreadLocal(..) => build_thread_local_shim(tcx, shim),
-        ty::ShimKind::TailCall(def_id, args) => return build_tail_call_shim(tcx, def_id, args),
+        ty::ShimKind::TailCall(def_id) => return build_tail_call_shim(tcx, def_id),
         ty::ShimKind::Clone(def_id, ty) => build_clone_shim(tcx, def_id, ty),
         ty::ShimKind::FnPtrAddr(def_id, ty) => build_fn_ptr_addr_shim(tcx, def_id, ty),
         ty::ShimKind::FutureDropPoll(def_id, proxy_ty, impl_ty) => {
@@ -539,29 +539,25 @@ impl<'tcx> MutVisitor<'tcx> for ShiftLocals<'tcx> {
 /// `return TailNext::Done(v)`, and every `become g(x, ..)` becomes
 /// `return TailNext::Call(g_shim, (x, ..))`. The `core::tail_call::tail_eval` trampoline drives the
 /// resulting continuations.
-fn build_tail_call_shim<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    def_id: DefId,
-    args: ty::GenericArgsRef<'tcx>,
-) -> Body<'tcx> {
-    debug!("build_tail_call_shim(def_id={def_id:?}, args={args:?})");
+fn build_tail_call_shim<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Body<'tcx> {
+    debug!("build_tail_call_shim(def_id={def_id:?})");
 
     let span = tcx.def_span(def_id);
     let source_info = SourceInfo::outermost(span);
 
-    // Clone and monomorphize the pre-trampoline body, which still contains `TailCall` terminators.
-    // `optimized_mir` replaces the real body with a `tail_eval` trampoline, so the pre-trampoline
-    // body is stashed on `optimized_mir` as `tail_call_shim_source` (this also makes it available
-    // cross-crate, since it is encoded alongside `optimized_mir`).
-    let source = tcx
+    // Clone the pre-trampoline body, which still contains `TailCall` terminators. `optimized_mir`
+    // replaces the real body with a `tail_eval` trampoline, so the pre-trampoline body is stashed on
+    // `optimized_mir` as `tail_call_shim_source` (this also makes it available cross-crate, since it
+    // is encoded alongside `optimized_mir`). The body stays polymorphic; the caller instantiates it
+    // with the shim `Instance`'s generic arguments, like other polymorphic shims.
+    let mut body = tcx
         .optimized_mir(def_id)
         .tail_call_shim_source
         .as_deref()
-        .expect("tail-call shim requested for a body without a stashed shim source");
-    let mut body = EarlyBinder::bind(tcx, source.clone()).instantiate(tcx, args).skip_norm_wip();
+        .expect("tail-call shim requested for a body without a stashed shim source")
+        .clone();
 
-    // Read the (already monomorphized) argument and return types straight off the body, before we
-    // renumber its locals below.
+    // Read the argument and return types straight off the body, before we renumber its locals below.
     let inputs: Vec<Ty<'tcx>> = body.args_iter().map(|local| body.local_decls[local].ty).collect();
     let ret = body.return_ty();
     let args_tuple = Ty::new_tup(tcx, &inputs);
@@ -739,7 +735,7 @@ fn build_tail_call_shim<'tcx>(
         }
     }
 
-    body.source = MirSource::from_shim(ty::ShimKind::TailCall(def_id, args));
+    body.source = MirSource::from_shim(ty::ShimKind::TailCall(def_id));
     // The source body is drops-elaborated but not yet optimized; run the shim pipeline to lift it
     // to `Runtime(Optimized)`, which also (re)generates `mentioned_items` for the rewritten body.
     pm::run_passes_no_validate(

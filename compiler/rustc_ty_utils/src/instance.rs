@@ -104,7 +104,7 @@ fn resolve_instance_raw<'tcx>(
             };
             let callee_args = callee_args.no_bound_vars().unwrap();
             return Ok(Some(Instance {
-                def: ty::InstanceKind::Shim(ty::ShimKind::TailCall(callee, callee_args)),
+                def: ty::InstanceKind::Shim(ty::ShimKind::TailCall(callee)),
                 args: callee_args,
             }));
         } else if tcx.def_kind(def_id) == DefKind::Fn

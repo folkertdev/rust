@@ -357,7 +357,8 @@ macro_rules! make_mir_visitor {
                             coroutine_closure_def_id: _def_id,
                             receiver_by_ref: _,
                         })
-                        | ty::InstanceKind::Shim(ty::ShimKind::DropGlue(_def_id, None)) => {}
+                        | ty::InstanceKind::Shim(ty::ShimKind::DropGlue(_def_id, None))
+                        | ty::InstanceKind::Shim(ty::ShimKind::TailCall(_def_id)) => {}
 
                         ty::InstanceKind::Shim(ty::ShimKind::FnPtr(_def_id, ty))
                         | ty::InstanceKind::Shim(ty::ShimKind::DropGlue(_def_id, Some(ty)))
@@ -371,9 +372,6 @@ macro_rules! make_mir_visitor {
                         ty::InstanceKind::Shim(ty::ShimKind::FutureDropPoll(_def_id, proxy_ty, impl_ty)) => {
                             self.visit_ty($(& $mutability)? *proxy_ty, TyContext::Location(location));
                             self.visit_ty($(& $mutability)? *impl_ty, TyContext::Location(location));
-                        }
-                        ty::InstanceKind::Shim(ty::ShimKind::TailCall(_def_id, args)) => {
-                            self.visit_args(args, location);
                         }
                     }
                     self.visit_args(callee_args, location);

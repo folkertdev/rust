@@ -45,9 +45,9 @@ fn fn_sig_for_fn_abi<'tcx>(
     // The tail-call trampoline shim has signature `fn(Args) -> TailNext<Args, Ret>`, where `Args`
     // is the tupled argument list of the original `fn(..) -> Ret`. This must match the body built
     // by `build_tail_call_shim`.
-    if let InstanceKind::Shim(ShimKind::TailCall(def_id, tc_args)) = instance.def {
+    if let InstanceKind::Shim(ShimKind::TailCall(def_id)) = instance.def {
         let sig = tcx.instantiate_bound_regions_with_erased(
-            tcx.fn_sig(def_id).instantiate(tcx, tc_args).skip_norm_wip(),
+            tcx.fn_sig(def_id).instantiate(tcx, instance.args).skip_norm_wip(),
         );
         let args_tuple = Ty::new_tup(tcx, sig.inputs());
         let tail_next_ty = Ty::new_adt(
