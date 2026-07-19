@@ -576,11 +576,11 @@ fn build_tail_call_shim<'tcx>(
     let call_variant =
         tail_next_adt.variant_index_with_id(tcx.require_lang_item(LangItem::TailNextCall, span));
 
-    // Builds `TailNext::Done(value)`.
-    let make_done = |value: Operand<'tcx>| {
+    // Builds a `TailNext::<variant>(fields..)` aggregate rvalue.
+    let tail_next = |variant, fields: Vec<Operand<'tcx>>| {
         Rvalue::Aggregate(
-            Box::new(AggregateKind::Adt(tail_next_did, done_variant, tail_next_args, None, None)),
-            [value].into_iter().collect(),
+            Box::new(AggregateKind::Adt(tail_next_did, variant, tail_next_args, None, None)),
+            fields.into_iter().collect(),
         )
     };
 
@@ -648,7 +648,8 @@ fn build_tail_call_shim<'tcx>(
             Rewrite::Done => {
                 // The original return place `_0` is now `_2`; wrap it in `TailNext::Done`. The
                 // terminator stays `Return`, now returning the `TailNext` value in `_0`.
-                let rvalue = make_done(Operand::Move(Place::from(Local::from_usize(2))));
+                let rvalue =
+                    tail_next(done_variant, vec![Operand::Move(Place::from(Local::from_usize(2)))]);
                 body.basic_blocks_mut()[bb].statements.push(Statement::new(
                     source_info,
                     StatementKind::Assign(Box::new((Place::return_place(), rvalue))),
@@ -677,20 +678,12 @@ fn build_tail_call_shim<'tcx>(
                         ),
                     ))),
                 );
-                let call_rvalue = Rvalue::Aggregate(
-                    Box::new(AggregateKind::Adt(
-                        tail_next_did,
-                        call_variant,
-                        tail_next_args,
-                        None,
-                        None,
-                    )),
-                    [
+                let call_rvalue = tail_next(
+                    call_variant,
+                    vec![
                         Operand::Move(Place::from(shim_ptr_local)),
                         Operand::Move(Place::from(tuple_local)),
-                    ]
-                    .into_iter()
-                    .collect(),
+                    ],
                 );
                 let call_stmt = Statement::new(
                     source_info,
@@ -708,7 +701,7 @@ fn build_tail_call_shim<'tcx>(
                 // directly and wrap its result in `TailNext::Done`, ending the trampoline. This
                 // needs only the callee's signature, not its MIR (important cross-crate).
                 let result_local = body.local_decls.push(LocalDecl::new(ret, span));
-                let done = make_done(Operand::Move(Place::from(result_local)));
+                let done = tail_next(done_variant, vec![Operand::Move(Place::from(result_local))]);
                 let done_block = body.basic_blocks_mut().push(BasicBlockData::new_stmts(
                     vec![Statement::new(
                         source_info,
