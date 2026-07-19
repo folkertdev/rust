@@ -34,9 +34,10 @@ impl<'tcx> TyCtxt<'tcx> {
         // This applies to the tail-call trampoline shim (which always shares the symbol) and to a
         // `ReifyShim` created by `#[track_caller]`. (A `ClosureOnceShim` with the track_caller
         // attribute does not have a symbol, and therefore can be skipped here.)
-        let shares_symbol_with_item = matches!(instance_kind, InstanceKind::Shim(ShimKind::TailCall(..)))
-            || (matches!(instance_kind, InstanceKind::Shim(ShimKind::Reify(_, _)))
-                && attrs.flags.contains(CodegenFnAttrFlags::TRACK_CALLER));
+        let shares_symbol_with_item =
+            matches!(instance_kind, InstanceKind::Shim(ShimKind::TailCall(..)))
+                || (matches!(instance_kind, InstanceKind::Shim(ShimKind::Reify(_, _)))
+                    && attrs.flags.contains(CodegenFnAttrFlags::TRACK_CALLER));
         if shares_symbol_with_item {
             if attrs.flags.contains(CodegenFnAttrFlags::NO_MANGLE) {
                 attrs.to_mut().flags.remove(CodegenFnAttrFlags::NO_MANGLE);

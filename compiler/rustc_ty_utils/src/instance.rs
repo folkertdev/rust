@@ -97,7 +97,10 @@ fn resolve_instance_raw<'tcx>(
             // (a `fn`-item type). Redirect it to that shim so it can be named through the ordinary
             // `fn`-item / `ReifyFnPointer` machinery in generic code.
             let ty::FnDef(callee, callee_args) = *args.type_at(0).kind() else {
-                bug!("`tail_shim` handle must be applied to a `fn` item, found {:?}", args.type_at(0))
+                bug!(
+                    "`tail_shim` handle must be applied to a `fn` item, found {:?}",
+                    args.type_at(0)
+                )
             };
             let callee_args = callee_args.no_bound_vars().unwrap();
             return Ok(Some(Instance {

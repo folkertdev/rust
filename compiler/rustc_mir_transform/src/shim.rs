@@ -558,8 +558,7 @@ fn build_tail_call_shim<'tcx>(
         .tail_call_shim_source
         .as_deref()
         .expect("tail-call shim requested for a body without a stashed shim source");
-    let mut body =
-        EarlyBinder::bind(tcx, source.clone()).instantiate(tcx, args).skip_norm_wip();
+    let mut body = EarlyBinder::bind(tcx, source.clone()).instantiate(tcx, args).skip_norm_wip();
 
     // Read the (already monomorphized) argument and return types straight off the body, before we
     // renumber its locals below.
@@ -686,9 +685,12 @@ fn build_tail_call_shim<'tcx>(
                         None,
                         None,
                     )),
-                    [Operand::Move(Place::from(shim_ptr_local)), Operand::Move(Place::from(tuple_local))]
-                        .into_iter()
-                        .collect(),
+                    [
+                        Operand::Move(Place::from(shim_ptr_local)),
+                        Operand::Move(Place::from(tuple_local)),
+                    ]
+                    .into_iter()
+                    .collect(),
                 );
                 let call_stmt = Statement::new(
                     source_info,

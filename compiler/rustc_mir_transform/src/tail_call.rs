@@ -30,7 +30,11 @@ pub(crate) fn provide(providers: &mut Providers) {
 
 /// The continuation type `TailNext<Args, Ret>` driven by the tail-call trampoline, where `Args` is
 /// a function's (tupled) argument list and `Ret` its return type.
-pub(crate) fn tail_next_ty<'tcx>(tcx: TyCtxt<'tcx>, args_tuple: Ty<'tcx>, ret: Ty<'tcx>) -> Ty<'tcx> {
+pub(crate) fn tail_next_ty<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    args_tuple: Ty<'tcx>,
+    ret: Ty<'tcx>,
+) -> Ty<'tcx> {
     Ty::new_adt(
         tcx,
         tcx.adt_def(tcx.require_lang_item(LangItem::TailNext, DUMMY_SP)),
@@ -56,7 +60,9 @@ pub(crate) fn reify_tail_call_shim<'tcx>(
     // `fn(Args) -> TailNext<Args, Ret>`, the type of every tail-call shim.
     let ptr_ty = Ty::new_fn_ptr(
         tcx,
-        ty::Binder::dummy(tcx.mk_fn_sig_safe_rust_abi([args_tuple], tail_next_ty(tcx, args_tuple, ret))),
+        ty::Binder::dummy(
+            tcx.mk_fn_sig_safe_rust_abi([args_tuple], tail_next_ty(tcx, args_tuple, ret)),
+        ),
     );
     let callee_fn_ty = Ty::new_fn_def(tcx, callee, ty::Binder::dummy(callee_args));
     let handle = Operand::Constant(Box::new(ConstOperand {
