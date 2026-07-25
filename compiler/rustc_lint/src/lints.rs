@@ -2373,6 +2373,14 @@ pub(crate) struct ImproperGpuKernelArg<'a> {
 pub(crate) struct MissingGpuKernelExportName;
 
 #[derive(Diagnostic)]
+#[diag("the layout of `{$culprit}` is not guaranteed to be stable")]
+#[note("{$reason}")]
+pub(crate) struct DependenceOnUnstableLayoutDetailsLint<'a> {
+    pub culprit: Ty<'a>,
+    pub reason: &'static str,
+}
+
+#[derive(Diagnostic)]
 #[diag("enum variant is more than three times larger ({$largest} bytes) than the next largest")]
 pub(crate) struct VariantSizeDifferencesDiag {
     pub largest: u64,

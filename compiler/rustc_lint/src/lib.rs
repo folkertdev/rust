@@ -37,6 +37,7 @@ mod c_void_returns;
 mod context;
 mod dangling;
 mod default_could_be_derived;
+mod dependence_on_unstable_layout_details;
 mod deref_into_dyn_supertrait;
 mod diagnostics;
 mod disallowed_pass_by_ref;
@@ -92,6 +93,7 @@ use builtin::*;
 use c_void_returns::*;
 use dangling::*;
 use default_could_be_derived::DefaultCouldBeDerived;
+use dependence_on_unstable_layout_details::DependenceOnUnstableLayoutDetails;
 use deref_into_dyn_supertrait::*;
 use disallowed_pass_by_ref::*;
 use drop_forget_useless::*;
@@ -275,6 +277,7 @@ late_lint_methods!(
             InternalEqTraitMethodImpls: InternalEqTraitMethodImpls,
             ImplicitProvenanceCasts: ImplicitProvenanceCasts,
             CVoidReturns: CVoidReturns,
+            DependenceOnUnstableLayoutDetails: DependenceOnUnstableLayoutDetails,
             RawBorrowsViaReferences: RawBorrowsViaReferences,
         ]
     ]

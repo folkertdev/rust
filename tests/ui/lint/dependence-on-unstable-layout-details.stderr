@@ -1,0 +1,47 @@
+warning: the layout of `DefaultRepr` is not guaranteed to be stable
+  --> $DIR/dependence-on-unstable-layout-details.rs:25:30
+   |
+LL |     fn decl_takes_default(x: DefaultRepr);
+   |                              ^^^^^^^^^^^
+   |
+   = note: types with the default representation have an unspecified layout that may change between compiler versions
+note: the lint level is defined here
+  --> $DIR/dependence-on-unstable-layout-details.rs:4:9
+   |
+LL | #![warn(dependence_on_unstable_layout_details)]
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: the layout of `HasPrivateField` is not guaranteed to be stable
+  --> $DIR/dependence-on-unstable-layout-details.rs:29:25
+   |
+LL |     static DECL_STATIC: HasPrivateField;
+   |                         ^^^^^^^^^^^^^^^
+   |
+   = note: it is defined in another crate and has private fields, so its layout may change when that crate is updated
+
+warning: the layout of `DefaultRepr` is not guaranteed to be stable
+  --> $DIR/dependence-on-unstable-layout-details.rs:37:40
+   |
+LL | extern "C" fn def_returns_default() -> DefaultRepr {
+   |                                        ^^^^^^^^^^^
+   |
+   = note: types with the default representation have an unspecified layout that may change between compiler versions
+
+warning: the layout of `(u8, u16)` is not guaranteed to be stable
+  --> $DIR/dependence-on-unstable-layout-details.rs:43:37
+   |
+LL | extern "C" fn def_takes_tuple(pair: (u8, u16)) {}
+   |                                     ^^^^^^^^^
+   |
+   = note: tuples have an unspecified layout that may change between compiler versions
+
+warning: the layout of `HasPrivateField` is not guaranteed to be stable
+  --> $DIR/dependence-on-unstable-layout-details.rs:47:44
+   |
+LL | extern "C" fn def_takes_foreign_private(x: HasPrivateField) {}
+   |                                            ^^^^^^^^^^^^^^^
+   |
+   = note: it is defined in another crate and has private fields, so its layout may change when that crate is updated
+
+warning: 5 warnings emitted
+
