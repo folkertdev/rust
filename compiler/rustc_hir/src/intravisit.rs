@@ -64,6 +64,7 @@
 //! This order consistency is required in a few places in rustc, for
 //! example coroutine inference, and possibly also HIR borrowck.
 
+use rustc_abi::ExternAbi;
 use rustc_ast::Label;
 use rustc_ast::visit::{VisitorResult, try_visit, visit_opt, walk_list};
 use rustc_hir_id::HirId;
@@ -91,6 +92,10 @@ impl<'a> FnKind<'a> {
             FnKind::Method(_, ref sig) => Some(&sig.header),
             FnKind::Closure => None,
         }
+    }
+
+    pub fn abi(&self) -> ExternAbi {
+        self.header().map_or(ExternAbi::Rust, |header| header.abi)
     }
 
     pub fn constness(self) -> Constness {
