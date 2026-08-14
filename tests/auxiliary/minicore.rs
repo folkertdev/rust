@@ -115,6 +115,26 @@ impl<T: PointeeSized> Copy for *const T {}
 impl<T: PointeeSized> Copy for *mut T {}
 impl<T: Copy, const N: usize> Copy for [T; N] {}
 
+pub mod arch {
+    #[cfg(target_arch = "powerpc")]
+    pub mod powerpc {
+        #[lang = "ppcf128"]
+        #[repr(align(16))]
+        pub struct ppcf128([f64; 2]);
+
+        impl crate::Copy for ppcf128 {}
+    }
+
+    #[cfg(any(target_arch = "powerpc64"))]
+    pub mod powerpc64 {
+        #[lang = "ppcf128"]
+        #[repr(align(16))]
+        pub struct ppcf128([f64; 2]);
+
+        impl crate::Copy for ppcf128 {}
+    }
+}
+
 #[lang = "phantom_data"]
 pub struct PhantomData<T: PointeeSized>;
 impl<T: PointeeSized> Copy for PhantomData<T> {}
