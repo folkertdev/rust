@@ -500,6 +500,7 @@ pub enum FloatLength {
     F32,
     F64,
     F128,
+    PpcF128,
 }
 
 impl IntegerLength {
@@ -521,6 +522,7 @@ impl FloatLength {
             FloatLength::F32 => 32,
             FloatLength::F64 => 64,
             FloatLength::F128 => 128,
+            FloatLength::PpcF128 => 128,
         }
     }
 }
