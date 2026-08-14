@@ -33,8 +33,11 @@ where
                 }
             }
             ELFv2 => {
-                // Pass up to eight uniquely addressable members.
-                if arg.layout.size > unit.size.checked_mul(8, cx).unwrap() {
+                // A `ppcf128` occupies two floating-point registers, so only four of them fit.
+                let max_members = if unit.kind == RegKind::DoubleDouble { 4 } else { 8 };
+
+                // Pass up to max_members uniquely addressable members.
+                if arg.layout.size > unit.size.checked_mul(max_members, cx).unwrap() {
                     return None;
                 }
             }
@@ -42,7 +45,7 @@ where
 
         let valid_unit = match unit.kind {
             RegKind::Integer => false,
-            RegKind::Float => true,
+            RegKind::Float | RegKind::DoubleDouble => true,
             RegKind::Vector { .. } => unit.size.bits() == 128,
         };
 
