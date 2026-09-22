@@ -1,4 +1,6 @@
 // tidy-alphabetical-start
+#![cfg_attr(any(target_arch = "powerpc", target_arch = "powerpc64"), feature(powerpc_ppcf128))]
+#![cfg_attr(any(target_arch = "powerpc", target_arch = "powerpc64"), feature(stdarch_powerpc))]
 #![feature(cfg_overflow_checks)]
 #![feature(cfg_target_has_reliable_f16_f128)]
 #![feature(clamp_magnitude)]
@@ -89,6 +91,8 @@ mod nan;
 mod niche_types;
 mod nonzero;
 mod ops;
+#[cfg(any(target_arch = "powerpc", target_arch = "powerpc64"))]
+mod ppcf128;
 mod wrapping;
 
 use floats::{assert_biteq, float_test};
