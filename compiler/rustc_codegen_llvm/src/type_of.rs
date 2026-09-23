@@ -129,6 +129,20 @@ fn uncached_llvm_type<'a, 'tcx>(
     }
 }
 
+/// The LLVM type of `scalar` as an immediate, if it differs from its type in memory.
+fn immediate_scalar_llvm_type<'a>(cx: &CodegenCx<'a, '_>, scalar: Scalar) -> Option<&'a Type> {
+    if scalar.is_bool() {
+        // `bool` is an `i8` in memory, but an `i1` as an immediate.
+        Some(cx.type_i1())
+    } else if scalar.is_x87_f80() {
+        // x87_f80 has an LLVM memory type of [10 x i8], but as an immediate we should
+        // map to the actual backend `x86_fp80` type.
+        Some(cx.type_x87_f80())
+    } else {
+        None
+    }
+}
+
 fn struct_llfields<'a, 'tcx>(
     cx: &CodegenCx<'a, 'tcx>,
     layout: TyAndLayout<'tcx>,
@@ -287,8 +301,10 @@ impl<'tcx> LayoutLlvmExt<'tcx> for TyAndLayout<'tcx> {
     fn immediate_llvm_type<'a>(&self, cx: &CodegenCx<'a, 'tcx>) -> &'a Type {
         match self.backend_repr {
             BackendRepr::Scalar(scalar) => {
-                if scalar.is_bool() {
-                    return cx.type_i1();
+                // Some types (e.g. bool) have a different immediate and memory representation.
+                match immediate_scalar_llvm_type(cx, scalar) {
+                    Some(scalar_immediate) => return scalar_immediate,
+                    None => { /* fall through */ }
                 }
             }
             BackendRepr::ScalarPair { .. } => {
@@ -310,6 +326,11 @@ impl<'tcx> LayoutLlvmExt<'tcx> for TyAndLayout<'tcx> {
     fn scalar_llvm_type_at<'a>(&self, cx: &CodegenCx<'a, 'tcx>, scalar: Scalar) -> &'a Type {
         match scalar.primitive() {
             Int(i, _) => cx.type_from_integer(i),
+            Float(rustc_abi::Float::X87F80) => {
+                // The LLVM x86_fp80 type includes padding in this context, so use an 80-bit
+                // array instead to represent this type.
+                cx.type_array(cx.type_i8(), 10)
+            }
             Float(f) => cx.type_from_float(f),
             Pointer(address_space) => cx.type_ptr_ext(address_space),
         }
@@ -335,8 +356,8 @@ impl<'tcx> LayoutLlvmExt<'tcx> for TyAndLayout<'tcx> {
         // immediate, just like `bool` is typically `i8` in memory and only `i1`
         // when immediate. We need to load/store `bool` as `i8` to avoid
         // crippling LLVM optimizations or triggering other LLVM bugs with `i1`.
-        if immediate && scalar.is_bool() {
-            return cx.type_i1();
+        if immediate && let Some(llty) = immediate_scalar_llvm_type(cx, scalar) {
+            return llty;
         }
 
         self.scalar_llvm_type_at(cx, scalar)

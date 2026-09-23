@@ -2,8 +2,8 @@ use std::cmp;
 use std::ops::Range;
 
 use rustc_abi::{
-    Align, ArmCall, BackendRepr, CanonAbi, ExternAbi, FieldsShape, HasDataLayout, Reg, Size,
-    VariantIdx, Variants, WrappingRange,
+    Align, ArmCall, CanonAbi, ExternAbi, FieldsShape, HasDataLayout, Reg, Size, VariantIdx,
+    Variants,
 };
 use rustc_ast as ast;
 use rustc_ast::{InlineAsmOptions, InlineAsmTemplatePiece};
@@ -2109,20 +2109,16 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 // ...and then load it with the ABI type.
                 llval = load_cast(bx, cast, llscratch, scratch_align);
                 bx.lifetime_end(llscratch, scratch_size);
+            } else if arg.layout.backend_repr.is_scalar() {
+                let place = PlaceValue::new_sized(llval, align).with_type(arg.layout);
+                llval = bx.load_operand(place).immediate();
             } else {
-                // We can't use `PlaceRef::load` here because the argument
+                // We can't use `bx.load_operand(place)` here because the argument
                 // may have a type we don't treat as immediate, but the ABI
                 // used for this call is passing it by-value. In that case,
                 // the load would just produce `OperandValue::Ref` instead
                 // of the `OperandValue::Immediate` we need for the call.
                 llval = bx.load(bx.backend_type(arg.layout), llval, align);
-                if let BackendRepr::Scalar(scalar) = arg.layout.backend_repr {
-                    if scalar.is_bool() {
-                        bx.range_metadata(llval, WrappingRange { start: 0, end: 1 });
-                    }
-                    // We store bools as `i8` so we need to truncate to `i1`.
-                    llval = bx.to_immediate_scalar(llval, scalar);
-                }
             }
         }
 

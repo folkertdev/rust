@@ -789,7 +789,11 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
             OperandValue::Ref(place.val)
         } else if place.layout.backend_repr.is_scalar_or_simd() {
             let mut const_llval = None;
-            let llty = place.layout.llvm_type(self);
+            let llty = if place.layout.backend_repr.is_bool() {
+                place.layout.llvm_type(self)
+            } else {
+                place.layout.immediate_llvm_type(self)
+            };
             if let Some(global) = llvm::LLVMIsAGlobalVariable(place.val.llval) {
                 if llvm::LLVMIsGlobalConstant(global).is_true() {
                     if let Some(init) = llvm::LLVMGetInitializer(global) {
@@ -817,7 +821,9 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
                 } else {
                     self.inbounds_ptradd(place.val.llval, self.const_usize(b_offset.bytes()))
                 };
-                let llty = place.layout.scalar_pair_element_llvm_type(self, i, false);
+                // `bool` is `i1` as an immediate and `i8` in memory.
+                let immediate = !scalar.is_bool();
+                let llty = place.layout.scalar_pair_element_llvm_type(self, i, immediate);
                 let load = self.load(llty, llptr, align);
                 scalar_load_metadata(self, load, scalar, layout, offset);
                 self.to_immediate_scalar(load, scalar)

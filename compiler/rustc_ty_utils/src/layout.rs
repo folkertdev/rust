@@ -1,12 +1,11 @@
 use std::range::{RangeFrom, RangeToInclusive};
 
-use rustc_abi as abi;
 use rustc_abi::Integer::{I8, I32};
 use rustc_abi::Primitive::{self, Float, Int, Pointer};
 use rustc_abi::{
-    AddressSpace, BackendRepr, FIRST_VARIANT, FieldIdx, FieldsShape, HasDataLayout, Layout,
-    LayoutCalculatorError, LayoutData, Niche, NicheOptimizations, ReprOptions, Scalar, Size,
-    StructKind, TagEncoding, VariantIdx, Variants, WrappingRange,
+    self as abi, AbiAlign, AddressSpace, Align, BackendRepr, FIRST_VARIANT, FieldIdx, FieldsShape,
+    HasDataLayout, Layout, LayoutCalculatorError, LayoutData, Niche, NicheOptimizations,
+    ReprOptions, Scalar, Size, StructKind, TagEncoding, VariantIdx, Variants, WrappingRange,
 };
 use rustc_attr_ir::find_attr;
 use rustc_attr_ir::lang_items::LangItem;
@@ -26,6 +25,7 @@ use rustc_middle::ty::{
 use rustc_session::{DataTypeKind, FieldInfo, FieldKind, SizeKind, VariantInfo};
 use rustc_span::{Symbol, bug, sym};
 use rustc_structures::Limit;
+use rustc_target::spec::{Arch, HasTargetSpec};
 use tracing::{debug, instrument};
 
 use crate::diagnostics::NonPrimitiveSimdType;
@@ -831,6 +831,26 @@ fn layout_of_uncached<'tcx>(
                 assert_eq!(layout.size, abi::Float::PpcF128.size());
                 layout.align = abi::Float::PpcF128.align(cx);
                 layout.backend_repr = BackendRepr::Scalar(ppcf128);
+            }
+
+            if tcx.is_lang_item(def.did(), LangItem::X87F80Raw) {
+                let x87_f80 = scalar_unit(Primitive::Float(abi::Float::X87F80));
+                assert_eq!(layout.size, abi::Float::X87F80.size());
+                assert_eq!(layout.size.bits(), 80);
+                assert_eq!(layout.align, abi::Float::X87F80.align(cx));
+                assert_eq!(layout.align.abi, Align::ONE);
+                layout.backend_repr = BackendRepr::Scalar(x87_f80);
+            }
+
+            if tcx.is_lang_item(def.did(), LangItem::X87F80) {
+                // A wrapper around `x87_f80_raw` that adds the target-specific alignment.
+                // It is an ordinary aggregate with trailing padding.
+                assert_eq!(layout.size, abi::Float::X87F80.size());
+                layout.align = AbiAlign::new(cx.data_layout().x87_f80_align);
+                layout.unadjusted_abi_align = layout.align.abi;
+                layout.size = layout.size.align_to(layout.align.abi);
+                layout.backend_repr = BackendRepr::Memory { sized: true };
+                layout.largest_niche = None;
             }
 
             tcx.mk_layout(layout)

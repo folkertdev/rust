@@ -55,6 +55,10 @@ where
     Ty: TyAbiInterface<'a, C> + Copy,
     C: HasDataLayout + HasTargetSpec,
 {
+    if ret.layout.is_x87_f80(cx) {
+        ret.cast_to(Reg::x87_f80());
+        return;
+    }
     if ret.layout.is_aggregate() && ret.layout.is_sized() {
         // Returning a structure. Most often, this will use
         // a hidden first argument. On some platforms, though,
@@ -107,7 +111,10 @@ where
     let align_4 = Align::from_bytes(4).unwrap();
     let align_16 = Align::from_bytes(16).unwrap();
 
-    if arg.layout.is_aggregate() {
+    if arg.layout.is_x87_f80(cx) {
+        arg.cast_to(Reg::x87_f80());
+        return;
+    } else if arg.layout.is_aggregate() {
         // We need to compute the alignment of the `byval` argument. The rules can be found in
         // `X86_32ABIInfo::getTypeStackAlignInBytes` in Clang's `TargetInfo.cpp`. Summarized
         // here, they are:
@@ -233,6 +240,7 @@ pub(crate) fn fill_inregs<'a, Ty, C>(
             | PassMode::Indirect { attrs: _, meta_attrs: None, address_space: _, mode: _ } => {
                 continue;
             }
+            PassMode::Cast { .. } if arg.layout.is_x87_f80(cx) => continue,
             PassMode::Direct(ref mut attrs) => attrs,
             PassMode::Pair(..)
             | PassMode::Indirect { attrs: _, meta_attrs: Some(_), address_space: _, mode: _ }
@@ -287,6 +295,7 @@ where
             }
             _ => false, // anyway not passed via registers on x86
         };
+
         if has_float {
             if cx.target_spec().rustc_abi == Some(RustcAbi::X86Sse2)
                 && fn_abi.ret.layout.backend_repr.is_scalar()
