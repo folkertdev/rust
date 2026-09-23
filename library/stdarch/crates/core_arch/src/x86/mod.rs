@@ -5,6 +5,27 @@ use crate::mem::transmute;
 #[macro_use]
 mod macros;
 
+/// The x87 80-bit extended-precision floating-point type.
+#[lang = "x87_f80"]
+#[doc(alias = "long double")]
+#[doc(alias = "x86_fp80")]
+#[doc(alias = "extended")]
+#[unstable(feature = "x87_f80", issue = "none")]
+#[allow(non_camel_case_types)]
+#[doc(cfg(any(target_arch = "x86", target_arch = "x86_64")))]
+#[repr(C)]
+pub struct x87_f80([u8; 10]);
+
+#[unstable(feature = "x87_f80", issue = "none")]
+impl Clone for x87_f80 {
+    #[inline]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+#[unstable(feature = "x87_f80", issue = "none")]
+impl Copy for x87_f80 {}
+
 types! {
     #![stable(feature = "simd_x86", since = "1.27.0")]
 
