@@ -673,7 +673,7 @@ impl<'tcx> Operand<'tcx> {
                 Scalar::Int(int) => int.size(),
                 _ => panic!("Invalid scalar type {val:?}"),
             };
-            scalar_size == type_size
+            scalar_size <= type_size
         });
         Operand::Constant(Box::new(ConstOperand {
             span,

@@ -1,6 +1,6 @@
 use std::assert_matches;
 
-use rustc_abi::{BackendRepr, FieldsShape, Scalar, Size, TagEncoding, Variants};
+use rustc_abi::{BackendRepr, FieldsShape, Float, Primitive, Scalar, Size, TagEncoding, Variants};
 use rustc_middle::ty;
 use rustc_middle::ty::TypeVisitableExt;
 use rustc_middle::ty::layout::{HasTyCtxt, LayoutCx, TyAndLayout};
@@ -104,12 +104,25 @@ pub(super) fn layout_sanity_check<'tcx>(cx: &LayoutCx<'tcx>, layout: &TyAndLayou
                 "alignment mismatch between ABI and layout in {layout:#?}"
             );
         }
+        // An `x87_f80` does not fill the type that holds it: the padding that gives it the
+        // alignment of the target's `long double` is not part of the value.
+        let is_x87 = matches!(
+            layout.backend_repr,
+            BackendRepr::Scalar(scalar) if scalar.primitive() == Primitive::Float(Float::X87F80)
+        );
         if let Some(size) = size {
-            assert_eq!(
-                layout.layout.size(),
-                size,
-                "size mismatch between ABI and layout in {layout:#?}"
-            );
+            if is_x87 {
+                assert!(
+                    layout.layout.size() >= size,
+                    "size mismatch between ABI and layout in {layout:#?}"
+                );
+            } else {
+                assert_eq!(
+                    layout.layout.size(),
+                    size,
+                    "size mismatch between ABI and layout in {layout:#?}"
+                );
+            }
         }
 
         // Verify per-ABI invariants
@@ -118,6 +131,11 @@ pub(super) fn layout_sanity_check<'tcx>(cx: &LayoutCx<'tcx>, layout: &TyAndLayou
                 // These must always be present for `Scalar` types.
                 let align = align.unwrap();
                 let size = size.unwrap();
+                if is_x87 {
+                    // The lang item holds the payload in a byte array, so it is not a newtype
+                    // around a scalar.
+                    return;
+                }
                 // Check that this matches the underlying field.
                 let inner = skip_newtypes(cx, layout);
                 assert!(

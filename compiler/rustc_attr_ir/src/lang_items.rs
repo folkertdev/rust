@@ -282,6 +282,7 @@ language_item_table! {
     PartialOrd,              sym::partial_ord,         partial_ord_trait,          Target::Trait,          GenericRequirement::Exact(1);
     CVoid,                   sym::c_void,              c_void,                     Target::Enum,           GenericRequirement::None;
     F16B,                    sym::f16b,                f16b,                       Target::Struct,         GenericRequirement::Exact(0);
+    X87F80,                  sym::x87_f80,             x87_f80,                    Target::Struct,         GenericRequirement::None;
 
     Type,                    sym::type_info,           type_struct,                Target::Struct,         GenericRequirement::None;
     TypeGeneric,             sym::type_info_generic,   type_generic,               Target::Enum,         GenericRequirement::None;

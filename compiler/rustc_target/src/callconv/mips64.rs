@@ -32,6 +32,7 @@ where
                     // C does not have the f16 type
                     Float::F16 => None,
                     Float::F16B => unreachable!("`f16b` unsupported on mips64"),
+                    Float::X87F80 => unreachable!("`x87_f80` unsupported on mips64"),
                     Float::F32 => Some(Reg::f32()),
                     Float::F64 => Some(Reg::f64()),
                     Float::F128 => Some(Reg::f128()),

@@ -189,6 +189,11 @@ impl<'gcc, 'tcx> BaseTypeCodegenMethods for CodegenCx<'gcc, 'tcx> {
         bug!("unsupported float width 128")
     }
 
+    fn type_x87_f80(&self) -> Type<'gcc> {
+        // FIXME(x87_f80): GCC has long double but it may not correspond to the x87 format.
+        bug!("unsupported x87_f80 type")
+    }
+
     fn type_func(&self, params: &[Type<'gcc>], return_type: Type<'gcc>) -> Type<'gcc> {
         self.context.new_function_pointer_type(None, return_type, params, false)
     }

@@ -812,6 +812,16 @@ fn layout_of_uncached<'tcx>(
                 layout.backend_repr = BackendRepr::Scalar(bfloat);
             }
 
+            if tcx.is_lang_item(def.did(), LangItem::X87F80) {
+                let x87_f80 = scalar_unit(Primitive::Float(abi::Float::X87F80));
+                // The lang item holds just the value. The alignment that the target's C ABI
+                // gives to `long double` is what decides how much padding follows it.
+                assert_eq!(layout.size, abi::Float::X87F80.size());
+                layout.align = abi::Float::X87F80.align(cx);
+                layout.size = layout.size.align_to(layout.align.abi);
+                layout.backend_repr = BackendRepr::Scalar(x87_f80);
+            }
+
             tcx.mk_layout(layout)
         }
 

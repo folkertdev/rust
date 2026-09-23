@@ -327,6 +327,7 @@ pub struct TargetDataLayout {
     pub f16_align: Align,
     pub f32_align: Align,
     pub f64_align: Align,
+    pub x87_f80_align: Align,
     pub f128_align: Align,
     pub aggregate_align: Align,
 
@@ -367,6 +368,7 @@ impl Default for TargetDataLayout {
             f16_align: align(16),
             f32_align: align(32),
             f64_align: align(64),
+            x87_f80_align: align(128),
             f128_align: align(128),
             aggregate_align: align(8),
             vector_align: vec![
@@ -510,6 +512,7 @@ impl TargetDataLayout {
                 ["f16", a @ ..] => dl.f16_align = parse_align_seq(a, "f16")?,
                 ["f32", a @ ..] => dl.f32_align = parse_align_seq(a, "f32")?,
                 ["f64", a @ ..] => dl.f64_align = parse_align_seq(a, "f64")?,
+                ["f80", a @ ..] => dl.x87_f80_align = parse_align_seq(a, "f80")?,
                 ["f128", a @ ..] => dl.f128_align = parse_align_seq(a, "f128")?,
                 [p, s, a @ ..] if p.starts_with("p") => {
                     let mut p = p.strip_prefix('p').unwrap();
@@ -1426,6 +1429,11 @@ pub enum Float {
     F16B,
     F32,
     F64,
+    /// `x87_f80`, the x87 80-bit extended-precision format. Like `f16b` this is not a builtin type
+    /// in Rust (it is exposed as a lang item), but it is a builtin type in LLVM.
+    ///
+    /// Only used on x86 and x86_64 targets.
+    X87F80,
     F128,
 }
 
@@ -1438,6 +1446,7 @@ impl Float {
             F16B => Size::from_bits(16),
             F32 => Size::from_bits(32),
             F64 => Size::from_bits(64),
+            X87F80 => Size::from_bits(80),
             F128 => Size::from_bits(128),
         }
     }
@@ -1450,6 +1459,7 @@ impl Float {
             F16 | F16B => dl.f16_align,
             F32 => dl.f32_align,
             F64 => dl.f64_align,
+            X87F80 => dl.x87_f80_align,
             F128 => dl.f128_align,
         })
     }
@@ -1462,6 +1472,7 @@ impl Float {
             F16B => "f16b",
             F32 => "f32",
             F64 => "f64",
+            X87F80 => "x87_f80",
             F128 => "f128",
         }
     }
