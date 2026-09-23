@@ -76,6 +76,7 @@ impl Reg {
                 16 => dl.f16_align,
                 32 => dl.f32_align,
                 64 => dl.f64_align,
+                80 => dl.x87_f80_align,
                 128 => dl.f128_align,
                 _ => panic!("unsupported float: {self:?}"),
             },

@@ -142,6 +142,7 @@ impl LlvmType for Reg {
                 16 => cx.type_f16(),
                 32 => cx.type_f32(),
                 64 => cx.type_f64(),
+                80 => cx.type_x87_f80(),
                 128 => cx.type_f128(),
                 _ => bug!("unsupported float: {:?}", self),
             },

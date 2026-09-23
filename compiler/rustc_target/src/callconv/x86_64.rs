@@ -2,7 +2,7 @@
 // https://github.com/jckarter/clay/blob/db0bd2702ab0b6e48965cd85f8859bbd5f60e48e/compiler/externals.cpp
 
 use rustc_abi::{
-    BackendRepr, HasDataLayout, Primitive, Reg, RegKind, Size, TyAbiInterface, TyAndLayout,
+    BackendRepr, Float, HasDataLayout, Primitive, Reg, RegKind, Size, TyAbiInterface, TyAndLayout,
     Variants,
 };
 
@@ -17,6 +17,19 @@ enum Class {
     Int,
     Sse,
     SseUp,
+    X87,
+    X87Up,
+}
+
+impl Class {
+    /// The class of the eightbytes that an object of this class occupies after the first one.
+    fn upper_half(self) -> Class {
+        match self {
+            Class::Sse => Class::SseUp,
+            Class::X87 => Class::X87Up,
+            Class::Int | Class::SseUp | Class::X87Up => self,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -54,6 +67,7 @@ where
         let mut c = match layout.backend_repr {
             BackendRepr::Scalar(scalar) => match scalar.primitive() {
                 Primitive::Int(..) | Primitive::Pointer(_) => Class::Int,
+                Primitive::Float(Float::X87F80) => Class::X87,
                 Primitive::Float(_) => Class::Sse,
             },
 
@@ -87,11 +101,8 @@ where
         for cls in &mut cls[first..=last] {
             *cls = Some(cls.map_or(c, |old| old.min(c)));
 
-            // Everything after the first Sse "eightbyte"
-            // component is the upper half of a register.
-            if c == Class::Sse {
-                c = Class::SseUp;
-            }
+            // Everything after the first "eightbyte" component is the upper half of a register.
+            c = c.upper_half();
         }
 
         Ok(())
@@ -127,6 +138,14 @@ where
         }
     }
 
+    // An upper half that is not preceded by its own lower half is passed in memory. This is what
+    // rejects e.g. a `long double` that shares its first eightbyte with an SSE field.
+    for i in 0..n {
+        if cls[i] == Some(Class::X87Up) && (i == 0 || cls[i - 1] != Some(Class::X87)) {
+            return Err(Memory);
+        }
+    }
+
     Ok(cls)
 }
 
@@ -153,6 +172,11 @@ fn reg_component(cls: &[Option<Class>], i: &mut usize, size: Size) -> Option<Reg
             } else {
                 Reg::opaque_vector(Size::from_bytes(8) * (vec_len as u64))
             })
+        }
+        Some(Class::X87) => {
+            *i += 1 + cls[*i + 1..].iter().take_while(|&&c| c == Some(Class::X87Up)).count();
+            // An `x87_f80` is narrower than the eightbytes it occupies; the rest is padding.
+            Some(Reg { kind: RegKind::Float, size: Float::X87F80.size() })
         }
         Some(c) => unreachable!("reg_component: unhandled class {:?}", c),
     }
@@ -195,6 +219,15 @@ where
             return;
         }
         let mut cls_or_mem = classify_arg(cx, arg);
+
+        // An argument of class X87 is passed in memory. A scalar `x87_f80` is left alone, because
+        // LLVM already puts immediates that do not fit in a register on the stack itself.
+        if is_arg
+            && arg.layout.is_aggregate()
+            && matches!(cls_or_mem, Ok(cls) if cls.contains(&Some(Class::X87)))
+        {
+            cls_or_mem = Err(Memory);
+        }
 
         if is_arg {
             if let Ok(cls) = cls_or_mem {
