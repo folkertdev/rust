@@ -27,6 +27,32 @@ struct x87_f80_raw([u8; 10]);
 #[derive(Clone, Copy)]
 pub struct x87_f80(x87_f80_raw);
 
+const _: () = assert!(
+    size_of::<x87_f80>()
+        == cfg_select! {
+            target_arch = "x86" => cfg_select! {
+                target_vendor = "apple" => 16,
+                target_env = "msvc" => 16,
+                _ => 12,
+            },
+            target_arch = "x86_64" => 16,
+            _ => size_of::<x87_f80>(), // for doc builds
+        }
+);
+
+const _: () = assert!(
+    align_of::<x87_f80>()
+        == cfg_select! {
+            target_arch = "x86" => cfg_select! {
+                target_vendor = "apple" => 16,
+                target_env = "msvc" => 16,
+                _ => 4,
+            },
+            target_arch = "x86_64" => 16,
+            _ => align_of::<x87_f80>(), // for doc builds
+        }
+);
+
 #[unstable(feature = "x87_f80", issue = "163982")]
 impl crate::fmt::Debug for x87_f80 {
     #[inline]
@@ -44,7 +70,7 @@ impl x87_f80 {
     #[inline]
     pub const fn to_ne_bytes(self) -> [u8; 10] {
         // SAFETY: the first 10 bytes are initialized.
-        unsafe { *(&raw const self).cast::<[u8; 10]>() }
+        unsafe { crate::mem::transmute::<x87_f80_raw, [u8; 10]>(self.0) }
     }
 
     /// Creates a floating point value from its representation as a byte array in native endian.
