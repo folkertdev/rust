@@ -132,3 +132,58 @@ pub unsafe extern "C" fn test_i32_variadic() -> i32 {
     // CHECK: retl
     unsafe { test_i32_variadic_sink(1, 2, 3) }
 }
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn test_i64() -> i64 {
+    extern "C" {
+        fn test_i64_sink(_: i64) -> i64;
+    }
+
+    // REGPARM1-LABEL: test_i64
+    // REGPARM1: pushl
+    // REGPARM1: pushl
+    // REGPARM1: calll test_i64_sink
+
+    // REGPARM2-LABEL: test_i64
+    // REGPARM2: movl $42, %eax
+    // REGPARM2: xorl %edx, %edx
+    // REGPARM2: jmp test_i64_sink
+
+    // REGPARM3-LABEL: test_i64
+    // REGPARM3: movl $42, %eax
+    // REGPARM3: xorl %edx, %edx
+    // REGPARM3: jmp test_i64_sink
+    unsafe { test_i64_sink(42i64) }
+}
+
+#[repr(C)]
+struct ThreeRegStruct {
+    a: i64,
+    b: i32,
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn test_struct() {
+    extern "C" {
+        fn test_struct_sink(_: ThreeRegStruct);
+    }
+
+    // REGPARM1-LABEL: test_struct
+    // REGPARM1: movl $0, {{.*}}(%esp)
+    // REGPARM1: movl $42, {{.*}}(%esp)
+    // REGPARM1: movl $1, {{.*}}(%esp)
+    // REGPARM1: calll test_struct_sink
+
+    // REGPARM2-LABEL: test_struct
+    // REGPARM2: movl $0, {{.*}}(%esp)
+    // REGPARM2: movl $42, {{.*}}(%esp)
+    // REGPARM2: movl $1, {{.*}}(%esp)
+    // REGPARM2: calll test_struct_sink
+
+    // REGPARM3-LABEL: test_struct
+    // REGPARM3: movl $42, %eax
+    // REGPARM3: xorl %edx, %edx
+    // REGPARM3: movl $1, %ecx
+    // REGPARM3: jmp test_struct_sink
+    unsafe { test_struct_sink(ThreeRegStruct { a: 42, b: 1 }) }
+}

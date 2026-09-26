@@ -1,5 +1,6 @@
 use rustc_abi::{
-    AddressSpace, Align, BackendRepr, Float, HasDataLayout, Primitive, Reg, RegKind, TyAndLayout,
+    AddressSpace, Align, BackendRepr, FieldsShape, Float, HasDataLayout, Primitive, Reg, RegKind,
+    TyAndLayout,
 };
 
 use crate::callconv::{ArgAbi, ArgAttribute, FnAbi, PassMode, TyAbiInterface, Uniform};
@@ -34,6 +35,55 @@ where
             }
             _ => false,
         };
+    }
+}
+
+/// Does GCC count this argument against the regparm/fastcall registers?
+fn argument_uses_gprs<'a, Ty, C>(mut layout: TyAndLayout<'a, Ty>, cx: &C) -> bool
+where
+    Ty: TyAbiInterface<'a, C> + Copy,
+    C: HasDataLayout,
+{
+    // The outermost register-sized value.
+    let mut leaf = None;
+
+    let outer_size = layout.size;
+    loop {
+        // Default to GPR when there is an over-aligned ZST field.
+        if layout.size != outer_size {
+            return true;
+        }
+
+        // GCC rejects complex numbers (but clang accepts them).
+        if layout.is_complex_number(cx) {
+            return false;
+        }
+
+        if let FieldsShape::Union(_) = layout.fields {
+            return true;
+        }
+
+        // HACK: this is needed for f16b which would otherwise be treated like
+        // the `u16` that it contains.
+        if leaf.is_none()
+            && matches!(
+                layout.backend_repr,
+                BackendRepr::Scalar(_) | BackendRepr::SimdVector { .. }
+            )
+        {
+            leaf = Some(layout.backend_repr);
+        }
+
+        match layout.non_zst_field_ignore_alignment(cx) {
+            Some((_, field)) => layout = field,
+            None => break,
+        }
+    }
+
+    match leaf {
+        Some(BackendRepr::Scalar(s)) => !matches!(s.primitive(), Primitive::Float(_)),
+        Some(BackendRepr::SimdVector { .. }) => false,
+        _ => true,
     }
 }
 
@@ -110,21 +160,22 @@ fn classify_arg<'a, Ty, C>(
     let align_4 = Align::from_bytes(4).unwrap();
     let align_16 = Align::from_bytes(16).unwrap();
 
-    let size_in_registers = arg.layout.size.bytes().div_ceil(4);
-    let mut pass_in_reg = *available_registers >= size_in_registers;
+    let words = arg.layout.size.bytes().div_ceil(4);
+    let mut in_reg = false;
 
-    // In fastcall/vectorcall only 32-bit integers can be passed in registers.
-    if opts.flavor == Flavor::FastcallOrVectorcall && size_in_registers > 1 {
-        pass_in_reg = false;
-        // Once we've had an argument which doesn't fit, don't try to fit any more.
-        *available_registers = 0;
+    if argument_uses_gprs(arg.layout, cx) {
+        (in_reg, *available_registers) = if *available_registers >= words {
+            (true, *available_registers - words)
+        } else {
+            (false, 0)
+        };
+    }
+
+    if opts.flavor == Flavor::FastcallOrVectorcall && (arg.layout.is_aggregate() || words > 1) {
+        in_reg = false; // Counted, but fastcall only puts 32-bit scalars in registers.
     }
 
     if arg.layout.is_aggregate() {
-        if opts.flavor == Flavor::FastcallOrVectorcall && size_in_registers > 1 {
-            pass_in_reg = false;
-        }
-
         // We need to compute the alignment of the `byval` argument. The rules can be found in
         // `X86_32ABIInfo::getTypeStackAlignInBytes` in Clang's `TargetInfo.cpp`. Summarized
         // here, they are:
@@ -171,34 +222,27 @@ fn classify_arg<'a, Ty, C>(
             align_4
         };
 
-        if pass_in_reg {
+        if in_reg {
             arg.cast_to(Uniform::new(Reg::i32(), arg.layout.size));
         } else {
             arg.pass_by_stack_offset(Some(byval_align))
         }
     } else {
-        let unit = arg.layout.homogeneous_aggregate(cx).unwrap().unit().unwrap();
-
-        // Fastcall/regparm won't pass floats in registers
-        // (though regparm _will_ pass f]oat-containing structs in registers)
-        if unit.kind != RegKind::Integer {
-            pass_in_reg = false;
-        }
-
         arg.extend_integer_width_to(32);
+    }
 
-        // Set the InReg annotation if we're passing by register.
-        if pass_in_reg {
-            set_inreg(arg);
-            *available_registers -= size_in_registers;
-        }
+    // Set the InReg annotation if we're passing by register.
+    if in_reg {
+        set_inreg(arg);
     }
 }
 
 fn set_inreg<'a, Ty>(arg: &mut ArgAbi<'a, Ty>) {
     match arg.mode {
-        PassMode::Ignore
-        | PassMode::Indirect { attrs: _, meta_attrs: None, address_space: _, mode: _ } => {}
+        PassMode::Ignore => {}
+        PassMode::Indirect { ref mut attrs, meta_attrs: None, address_space: _, mode: _ } => {
+            attrs.set(ArgAttribute::InReg);
+        }
         PassMode::Cast { pad_i32_count: _, ref mut cast } => {
             cast.attrs.set(ArgAttribute::InReg);
         }
@@ -217,10 +261,6 @@ where
     Ty: TyAbiInterface<'a, C> + Copy,
     C: HasDataLayout + HasTargetSpec,
 {
-    if !fn_abi.ret.is_ignore() {
-        classify_ret(cx, opts, &mut fn_abi.ret);
-    }
-
     // The number of registers available for argument passing.
     //
     // An `extern "fastcall"` and `extern "vectorcall"` function always have 2 registers available.
@@ -235,6 +275,22 @@ where
         Flavor::FastcallOrVectorcall => 2,
     };
 
+    if !fn_abi.ret.is_ignore() {
+        classify_ret(cx, opts, &mut fn_abi.ret);
+
+        if let PassMode::Indirect { ref mut attrs, meta_attrs: None, .. } = fn_abi.ret.mode
+            && matches!(opts.flavor, Flavor::General { .. })
+        {
+            let in_reg;
+            (in_reg, free_registers) =
+                if free_registers >= 1 { (true, free_registers - 1) } else { (false, 0) };
+
+            if in_reg {
+                attrs.set(ArgAttribute::InReg);
+            }
+        }
+    }
+
     for arg in fn_abi.args.iter_mut() {
         if arg.is_ignore() || !arg.layout.is_sized() {
             continue;
@@ -242,13 +298,18 @@ where
 
         if arg.layout.pass_indirectly_in_non_rustic_abis(cx) {
             arg.make_indirect();
+
+            let in_reg;
+            (in_reg, free_registers) =
+                if free_registers >= 1 { (true, free_registers - 1) } else { (false, 0) };
+            if in_reg {
+                set_inreg(arg);
+            }
             continue;
         }
 
         classify_arg(cx, opts, &mut free_registers, arg);
     }
-
-    fill_inregs(cx, fn_abi, opts, false);
 }
 
 pub(crate) fn fill_inregs<'a, Ty, C>(
