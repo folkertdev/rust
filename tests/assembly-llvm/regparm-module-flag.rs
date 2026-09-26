@@ -132,3 +132,109 @@ pub unsafe extern "C" fn test_i32_variadic() -> i32 {
     // CHECK: retl
     unsafe { test_i32_variadic_sink(1, 2, 3) }
 }
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn test_i64() -> i64 {
+    extern "C" {
+        fn test_i64_sink(_: i64) -> i64;
+    }
+
+    // CHECK-LABEL: test_i64
+
+    // REGPARM0: pushl
+    // REGPARM0: pushl
+    // REGPARM0: calll test_i64_sink
+
+    // REGPARM1: pushl
+    // REGPARM1: pushl
+    // REGPARM1: calll test_i64_sink
+
+    // REGPARM2: movl $42, %eax
+    // REGPARM2: xorl %edx, %edx
+    // REGPARM2: jmp test_i64_sink
+
+    // REGPARM3: movl $42, %eax
+    // REGPARM3: xorl %edx, %edx
+    // REGPARM3: jmp test_i64_sink
+    unsafe { test_i64_sink(42i64) }
+}
+
+#[repr(C)]
+struct ThreeRegStruct {
+    a: i64,
+    b: i32,
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn test_struct() {
+    extern "C" {
+        fn test_struct_sink(_: ThreeRegStruct);
+    }
+    // CHECK-LABEL: test_struct
+
+    // REGPARM0: movl $0, {{.*}}(%esp)
+    // REGPARM0: movl $42, {{.*}}(%esp)
+    // REGPARM0: movl $1, {{.*}}(%esp)
+    // REGPARM0: calll test_struct_sink
+
+    // REGPARM1: movl $0, {{.*}}(%esp)
+    // REGPARM1: movl $42, {{.*}}(%esp)
+    // REGPARM1: movl $1, {{.*}}(%esp)
+    // REGPARM1: calll test_struct_sink
+
+    // REGPARM2: movl $0, {{.*}}(%esp)
+    // REGPARM2: movl $42, {{.*}}(%esp)
+    // REGPARM2: movl $1, {{.*}}(%esp)
+    // REGPARM2: calll test_struct_sink
+
+    // REGPARM3: movl $42, %eax
+    // REGPARM3: xorl %edx, %edx
+    // REGPARM3: movl $1, %ecx
+    // REGPARM3: jmp test_struct_sink
+    unsafe { test_struct_sink(ThreeRegStruct { a: 42, b: 1 }) }
+}
+
+#[repr(C)]
+struct BigStruct {
+    x: [u8; 32],
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn force_hidden_sret() {
+    extern "C" {
+        fn force_hidden_sret_sink(a: i32, b: i32, c: i32) -> BigStruct;
+    }
+
+    // CHECK-LABEL: force_hidden_sret:
+
+    // REGPARM0: leal 8(%esp), %esi
+    // REGPARM0: pushl $3
+    // REGPARM0: pushl $2
+    // REGPARM0: pushl $1
+    // REGPARM0: pushl %esi
+    // REGPARM0: calll force_hidden_sret_sink
+
+    // REGPARM1: leal 12(%esp), %esi
+    // REGPARM1: movl %esi, %eax
+    // REGPARM1: pushl $3
+    // REGPARM1: pushl $2
+    // REGPARM1: pushl $1
+    // REGPARM1: calll force_hidden_sret_sink
+
+    // REGPARM2: leal 16(%esp), %esi
+    // REGPARM2: movl $1, %edx
+    // REGPARM2: movl %esi, %eax
+    // REGPARM2: pushl $3
+    // REGPARM2: pushl $2
+    // REGPARM2: calll force_hidden_sret_sink
+
+    // REGPARM3: leal 8(%esp), %esi
+    // REGPARM3: movl $1, %edx
+    // REGPARM3: movl $2, %ecx
+    // REGPARM3: movl $3, (%esp)
+    // REGPARM3: movl %esi, %eax
+    // REGPARM3: calll force_hidden_sret_sink
+
+    let b = unsafe { force_hidden_sret_sink(1, 2, 3) };
+    minicore::hint::black_box(b);
+}

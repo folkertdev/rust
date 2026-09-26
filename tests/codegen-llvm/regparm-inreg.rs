@@ -20,6 +20,7 @@
 
 extern crate minicore;
 use minicore::num::Complex;
+use minicore::*;
 
 pub mod tests {
     use minicore::simd::Simd;
@@ -62,8 +63,7 @@ pub mod tests {
     // regparm0: @f7(i32 noundef %_1, i32 noundef %_2, ptr {{.*}} byval([4 x i8]) {{.*}} %_3, i32 noundef %_4)
     // regparm1: @f7(i32 inreg noundef %_1, i32 noundef %_2, ptr {{.*}} byval([4 x i8]) {{.*}} %_3, i32 noundef %_4)
     // regparm2: @f7(i32 inreg noundef %_1, i32 inreg noundef %_2, ptr {{.*}} byval([4 x i8]) {{.*}} %_3, i32 noundef %_4)
-    // regparm3: @f7(i32 inreg noundef %_1, i32 inreg noundef %_2, ptr {{.*}} byval([4 x i8]) {{.*}} %_3,
-    // regparm3-SAME: i32 inreg noundef %_4)
+    // regparm3: @f7(i32 inreg noundef %_1, i32 inreg noundef %_2, i32 inreg %0, i32 noundef %_4)
     #[no_mangle]
     pub extern "C" fn f7(_: i32, _: i32, _: S1, _: i32) {}
 
@@ -75,8 +75,7 @@ pub mod tests {
     // regparm0: @f8(i32 noundef %_1, i32 noundef %_2, ptr {{.*}} %_3, i32 noundef %_4)
     // regparm1: @f8(i32 inreg noundef %_1, i32 noundef %_2, ptr {{.*}} %_3, i32 noundef %_4)
     // regparm2: @f8(i32 inreg noundef %_1, i32 inreg noundef %_2, ptr {{.*}} %_3, i32 noundef %_4)
-    // regparm3: @f8(i32 inreg noundef %_1, i32 inreg noundef %_2, ptr {{.*}} %_3,
-    // regparm3-SAME: i32 inreg noundef %_4)
+    // regparm3: @f8(i32 inreg noundef %_1, i32 inreg noundef %_2, ptr {{.*}} %_3, i32 noundef %_4)
     #[no_mangle]
     pub extern "C" fn f8(_: i32, _: i32, _: S2, _: i32) {}
 
@@ -230,3 +229,61 @@ pub struct S18 {
 // regparm3: @pass_struct_singleton_array_float(ptr {{.*}} byval([4 x i8]) {{.*}} %_1, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 inreg noundef %_4)
 #[no_mangle]
 pub extern "C" fn pass_struct_singleton_array_float(_: S18, _: i32, _: i32, _: i32) {}
+
+#[repr(C)]
+pub union U1 {
+    pub x1: f32,
+}
+
+// Unions are passed like integers.
+//
+// regparm0: @pass_union_float(ptr {{.*}} byval([4 x i8]) {{.*}} %_1, i32 noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm1: @pass_union_float(i32 inreg %0, i32 noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm2: @pass_union_float(i32 inreg %0, i32 inreg noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm3: @pass_union_float(i32 inreg %0, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 noundef %_4)
+#[no_mangle]
+pub extern "C" fn pass_union_float(_: U1, _: i32, _: i32, _: i32) {}
+
+#[repr(C)]
+struct S5 {
+    x1: f32,
+}
+impl Copy for S5 {}
+
+#[repr(C)]
+pub union U2 {
+    pub x1: S5,
+}
+
+// regparm0: @pass_union_struct_float(ptr {{.*}} byval([4 x i8]) {{.*}} %_1, i32 noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm1: @pass_union_struct_float(i32 inreg %0, i32 noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm2: @pass_union_struct_float(i32 inreg %0, i32 inreg noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm3: @pass_union_struct_float(i32 inreg %0, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 noundef %_4)
+#[no_mangle]
+pub extern "C" fn pass_union_struct_float(_: U2, _: i32, _: i32, _: i32) {}
+
+#[repr(C)]
+union U3 {
+    x1: Complex<f32>,
+}
+
+// regparm0: @pass_union_complex_float(ptr {{.*}} byval([8 x i8]) {{.*}} %_1, i32 noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm1: @pass_union_complex_float(ptr {{.*}} byval([8 x i8]) {{.*}} %_1, i32 noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm2: @pass_union_complex_float([2 x i32] inreg %0, i32 noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm3: @pass_union_complex_float([2 x i32] inreg %0, i32 inreg noundef %_2, i32 noundef %_3, i32 noundef %_4)
+#[no_mangle]
+pub extern "C" fn pass_union_complex_float(_: U3, _: i32, _: i32, _: i32) {}
+
+#[repr(C)]
+struct BigStruct {
+    x: [u8; 32],
+}
+
+// regparm0: @force_hidden_sret(ptr{{.*}} sret([32 x i8]){{.*}} %_0, i32 noundef %a, i32 noundef %b, i32 noundef %c)
+// regparm1: @force_hidden_sret(ptr{{.*}} inreg{{.*}} sret([32 x i8]){{.*}} %_0, i32 noundef %a, i32 noundef %b, i32 noundef %c)
+// regparm2: @force_hidden_sret(ptr{{.*}} inreg{{.*}} sret([32 x i8]){{.*}} %_0, i32 inreg noundef %a, i32 noundef %b, i32 noundef %c)
+// regparm3: @force_hidden_sret(ptr{{.*}} inreg{{.*}} sret([32 x i8]){{.*}} %_0, i32 inreg noundef %a, i32 inreg noundef %b, i32 noundef %c)
+#[unsafe(no_mangle)]
+pub extern "C" fn force_hidden_sret(a: i32, b: i32, c: i32) -> BigStruct {
+    loop {}
+}

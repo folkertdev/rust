@@ -1,8 +1,10 @@
 use rustc_abi::{
-    AddressSpace, Align, BackendRepr, Float, HasDataLayout, Primitive, Reg, RegKind, TyAndLayout,
+    AddressSpace, Align, BackendRepr, FieldsShape, Float, HasDataLayout, Primitive, Reg, RegKind,
+    TyAndLayout,
 };
+use rustc_span::bug;
 
-use crate::callconv::{ArgAbi, ArgAttribute, FnAbi, PassMode, TyAbiInterface};
+use crate::callconv::{ArgAbi, ArgAttribute, FnAbi, PassMode, TyAbiInterface, Uniform};
 use crate::spec::{HasTargetSpec, RustcAbi};
 
 /// Is this a struct with a single float field?
@@ -35,6 +37,59 @@ where
             }
             _ => false,
         };
+    }
+}
+
+/// Does GCC use GPRs to pass this argument when using regparm?
+///
+/// Note that this function looks purely at the structure, not at whether the
+/// type would actually fit in the remaining GPR registers.
+fn argument_uses_gprs<'a, Ty, C>(mut layout: TyAndLayout<'a, Ty>, cx: &C) -> bool
+where
+    Ty: TyAbiInterface<'a, C> + Copy,
+    C: HasDataLayout,
+{
+    // The outermost register-sized value.
+    let mut leaf = None;
+
+    let outer_size = layout.size;
+    loop {
+        // Default to GPR when there is an over-aligned ZST field.
+        if layout.size != outer_size {
+            return true;
+        }
+
+        // GCC rejects complex numbers (but clang accepts them).
+        if layout.is_complex_number(cx) {
+            return false;
+        }
+
+        // Unions are always passed in GPRs.
+        if let FieldsShape::Union(_) = layout.fields {
+            return true;
+        }
+
+        // Look at the backend_repr (and not the type!) because for f16b (a float)
+        // the transparent wrapper is peeled off giving the inner u16 (an integer).
+        if leaf.is_none()
+            && matches!(
+                layout.backend_repr,
+                BackendRepr::Scalar(_) | BackendRepr::SimdVector { .. }
+            )
+        {
+            leaf = Some(layout.backend_repr);
+        }
+
+        match layout.non_zst_field_ignore_alignment(cx) {
+            Some((_, field)) => layout = field,
+            None => break,
+        }
+    }
+
+    match leaf {
+        Some(BackendRepr::Scalar(s)) => !matches!(s.primitive(), Primitive::Float(_)),
+        Some(BackendRepr::SimdVector { .. }) => false,
+        _ => true,
     }
 }
 
@@ -98,14 +153,30 @@ where
     }
 }
 
-fn classify_arg<'a, Ty, C>(cx: &C, arg: &mut ArgAbi<'a, Ty>)
-where
+fn classify_arg<'a, Ty, C>(
+    cx: &C,
+    opts: X86Options,
+    available_registers: &mut u64,
+    arg: &mut ArgAbi<'a, Ty>,
+) where
     Ty: TyAbiInterface<'a, C> + Copy,
     C: HasDataLayout + HasTargetSpec,
 {
     let t = cx.target_spec();
     let align_4 = Align::from_bytes(4).unwrap();
     let align_16 = Align::from_bytes(16).unwrap();
+
+    let words = arg.layout.size.bytes().div_ceil(4);
+    let mut in_reg = false;
+
+    if argument_uses_gprs(arg.layout, cx) {
+        in_reg = *available_registers >= words;
+        *available_registers = available_registers.saturating_sub(words);
+    }
+
+    if opts.flavor == Flavor::FastcallOrVectorcall && (arg.layout.is_aggregate() || words > 1) {
+        in_reg = false; // Counted, but fastcall only puts 32-bit scalars in registers.
+    }
 
     if arg.layout.is_aggregate() {
         // We need to compute the alignment of the `byval` argument. The rules can be found in
@@ -154,9 +225,24 @@ where
             align_4
         };
 
-        arg.pass_by_stack_offset(Some(byval_align));
+        if in_reg {
+            arg.cast_to_with_attrs(
+                Uniform::new(Reg::i32(), arg.layout.size),
+                ArgAttribute::InReg.into(),
+            );
+        } else {
+            arg.pass_by_stack_offset(Some(byval_align))
+        }
     } else {
         arg.extend_integer_width_to(32);
+
+        let PassMode::Direct(attrs) = &mut arg.mode else {
+            bug!("non-aggretate arguments are always passed directly")
+        };
+
+        if in_reg {
+            attrs.set(ArgAttribute::InReg);
+        }
     }
 }
 
@@ -165,8 +251,32 @@ where
     Ty: TyAbiInterface<'a, C> + Copy,
     C: HasDataLayout + HasTargetSpec,
 {
+    // The number of registers available for argument passing.
+    //
+    // An `extern "fastcall"` and `extern "vectorcall"` function always have 2 registers available.
+    // Otherwise the `regparam` count (in the range 0..=3) determines the number of available
+    // registers.
+    //
+    // Functions that take a variable number of arguments continue to be passed all of their
+    // arguments on the stack.
+    let mut available_registers = match opts.flavor {
+        _ if fn_abi.c_variadic => 0,
+        Flavor::General { regparam } => u64::from(regparam.unwrap_or(0)),
+        Flavor::FastcallOrVectorcall => 2,
+    };
+
     if !fn_abi.ret.is_ignore() {
         classify_ret(cx, opts, &mut fn_abi.ret);
+
+        // Pass the set pointer in a register if we can.
+        if let PassMode::Indirect { ref mut attrs, .. } = fn_abi.ret.mode
+            && matches!(opts.flavor, Flavor::General { .. })
+        {
+            if available_registers >= 1 {
+                attrs.set(ArgAttribute::InReg);
+                available_registers -= 1;
+            }
+        }
     }
 
     for arg in fn_abi.args.iter_mut() {
@@ -176,13 +286,19 @@ where
 
         if arg.layout.pass_indirectly_in_non_rustic_abis(cx) {
             arg.make_indirect();
+
+            if available_registers >= 1 {
+                let PassMode::Indirect { attrs, .. } = &mut arg.mode else {
+                    bug!("we just marked this argument as indirect")
+                };
+                attrs.set(ArgAttribute::InReg);
+                available_registers -= 1;
+            }
             continue;
         }
 
-        classify_arg(cx, arg);
+        classify_arg(cx, opts, &mut available_registers, arg);
     }
-
-    fill_inregs(cx, fn_abi, opts, false);
 }
 
 pub(crate) fn fill_inregs<'a, Ty, C>(
