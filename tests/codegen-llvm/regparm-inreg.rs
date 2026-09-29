@@ -12,11 +12,15 @@
 //@[regparm2] compile-flags: -Zregparm=2
 //@[regparm3] compile-flags: -Zregparm=3
 
+// ignore-tidy-file-linelength
+
 #![crate_type = "lib"]
 #![no_core]
-#![feature(no_core, lang_items)]
+#![feature(no_core, lang_items, f16, f128)]
 
 extern crate minicore;
+use minicore::num::Complex;
+use minicore::*;
 
 pub mod tests {
     use minicore::simd::Simd;
@@ -57,10 +61,9 @@ pub mod tests {
         x1: i32,
     }
     // regparm0: @f7(i32 noundef %_1, i32 noundef %_2, ptr {{.*}} byval([4 x i8]) {{.*}} %_3, i32 noundef %_4)
-    // regparm1: @f7(i32 inreg noundef %_1, i32 noundef %_2, ptr {{.*}} byval([4 x i8]) {{.*}}  %_3, i32 noundef %_4)
+    // regparm1: @f7(i32 inreg noundef %_1, i32 noundef %_2, ptr {{.*}} byval([4 x i8]) {{.*}} %_3, i32 noundef %_4)
     // regparm2: @f7(i32 inreg noundef %_1, i32 inreg noundef %_2, ptr {{.*}} byval([4 x i8]) {{.*}} %_3, i32 noundef %_4)
-    // regparm3: @f7(i32 inreg noundef %_1, i32 inreg noundef %_2, ptr {{.*}} byval([4 x i8]) {{.*}} %_3,
-    // regparm3-SAME: i32 inreg noundef %_4)
+    // regparm3: @f7(i32 inreg noundef %_1, i32 inreg noundef %_2, i32 inreg %0, i32 noundef %_4)
     #[no_mangle]
     pub extern "C" fn f7(_: i32, _: i32, _: S1, _: i32) {}
 
@@ -72,8 +75,7 @@ pub mod tests {
     // regparm0: @f8(i32 noundef %_1, i32 noundef %_2, ptr {{.*}} %_3, i32 noundef %_4)
     // regparm1: @f8(i32 inreg noundef %_1, i32 noundef %_2, ptr {{.*}} %_3, i32 noundef %_4)
     // regparm2: @f8(i32 inreg noundef %_1, i32 inreg noundef %_2, ptr {{.*}} %_3, i32 noundef %_4)
-    // regparm3: @f8(i32 inreg noundef %_1, i32 inreg noundef %_2, ptr {{.*}} %_3,
-    // regparm3-SAME: i32 inreg noundef %_4)
+    // regparm3: @f8(i32 inreg noundef %_1, i32 inreg noundef %_2, ptr {{.*}} %_3, i32 noundef %_4)
     #[no_mangle]
     pub extern "C" fn f8(_: i32, _: i32, _: S2, _: i32) {}
 
@@ -123,3 +125,151 @@ pub mod tests {
     #[no_mangle]
     pub extern "C" fn f12(_: i32, _: __m256, _: i32, _: i32) {}
 }
+
+// regparm0: @pass_f16(half noundef %_1, i32 noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm1: @pass_f16(half noundef %_1, i32 inreg noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm2: @pass_f16(half noundef %_1, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 noundef %_4)
+// regparm3: @pass_f16(half noundef %_1, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 inreg noundef %_4)
+#[no_mangle]
+pub extern "C" fn pass_f16(_: f16, _: i32, _: i32, _: i32) {}
+
+// FIXME: f16b is guarded by target_has_reliable_f16b.
+// FIXME regparm0 @pass_bf16(bfloat noundef %_1, i32 noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// FIXME regparm1 @pass_bf16(bfloat noundef %_1, i32 inreg noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// FIXME regparm2 @pass_bf16(bfloat noundef %_1, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 noundef %_4)
+// FIXME regparm3 @pass_bf16(bfloat noundef %_1, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 inreg noundef %_4)
+// #[no_mangle]
+// pub extern "C" fn pass_bf16(_: f16b, _: i32, _: i32, _: i32) {}
+
+// FIXME: enable once we have x87_f80 / c_longdouble.
+// FIXME regparm0 @pass_f80(x86_fp80 noundef %_1, i32 noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// FIXME regparm1 @pass_f80(x86_fp80 noundef %_1, i32 inreg noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// FIXME regparm2 @pass_f80(x86_fp80 noundef %_1, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 noundef %_4)
+// FIXME regparm3 @pass_f80(x86_fp80 noundef %_1, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 inreg noundef %_4)
+// #[no_mangle]
+// pub extern "C" fn pass_f80(_: core::ffi::c_longdouble, _: i32, _: i32, _: i32) {}
+
+// regparm0: @pass_f128(fp128 noundef %_1, i32 noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm1: @pass_f128(fp128 noundef %_1, i32 inreg noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm2: @pass_f128(fp128 noundef %_1, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 noundef %_4)
+// regparm3: @pass_f128(fp128 noundef %_1, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 inreg noundef %_4)
+#[no_mangle]
+pub extern "C" fn pass_f128(_: f128, _: i32, _: i32, _: i32) {}
+
+#[repr(C)]
+pub struct S14 {
+    pub x1: f16,
+}
+
+// regparm0: @pass_wrapped_f16(ptr {{.*}} byval([2 x i8]) {{.*}} %_1, i32 noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm1: @pass_wrapped_f16(ptr {{.*}} byval([2 x i8]) {{.*}} %_1, i32 inreg noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm2: @pass_wrapped_f16(ptr {{.*}} byval([2 x i8]) {{.*}} %_1, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 noundef %_4)
+// regparm3: @pass_wrapped_f16(ptr {{.*}} byval([2 x i8]) {{.*}} %_1, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 inreg noundef %_4)
+#[no_mangle]
+pub extern "C" fn pass_wrapped_f16(_: S14, _: i32, _: i32, _: i32) {}
+
+#[repr(C)]
+pub struct S15 {
+    pub x1: f128,
+}
+
+// regparm0: @pass_wrapped_f128(ptr {{.*}} byval([16 x i8]) {{.*}} %0, i32 noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm1: @pass_wrapped_f128(ptr {{.*}} byval([16 x i8]) {{.*}} %0, i32 inreg noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm2: @pass_wrapped_f128(ptr {{.*}} byval([16 x i8]) {{.*}} %0, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 noundef %_4)
+// regparm3: @pass_wrapped_f128(ptr {{.*}} byval([16 x i8]) {{.*}} %0, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 inreg noundef %_4)
+#[no_mangle]
+pub extern "C" fn pass_wrapped_f128(_: S15, _: i32, _: i32, _: i32) {}
+
+// regparm0: @pass_complex_float(ptr {{.*}} byval([8 x i8]) {{.*}} %_1, i32 noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm1: @pass_complex_float(ptr {{.*}} byval([8 x i8]) {{.*}} %_1, i32 inreg noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm2: @pass_complex_float(ptr {{.*}} byval([8 x i8]) {{.*}} %_1, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 noundef %_4)
+// regparm3: @pass_complex_float(ptr {{.*}} byval([8 x i8]) {{.*}} %_1, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 inreg noundef %_4)
+#[no_mangle]
+pub extern "C" fn pass_complex_float(_: Complex<f32>, _: i32, _: i32, _: i32) {}
+
+// regparm0: @pass_complex_int(i32 noundef %_1, ptr {{.*}} byval([8 x i8]) {{.*}} %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm1: @pass_complex_int(i32 inreg noundef %_1, ptr {{.*}} byval([8 x i8]) {{.*}} %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm2: @pass_complex_int(i32 inreg noundef %_1, ptr {{.*}} byval([8 x i8]) {{.*}} %_2, i32 inreg noundef %_3, i32 noundef %_4)
+// regparm3: @pass_complex_int(i32 inreg noundef %_1, ptr {{.*}} byval([8 x i8]) {{.*}} %_2, i32 inreg noundef %_3, i32 inreg noundef %_4)
+#[no_mangle]
+pub extern "C" fn pass_complex_int(_: i32, _: Complex<i32>, _: i32, _: i32) {}
+
+#[repr(C)]
+struct S16 {
+    x1: Complex<f32>,
+}
+
+// regparm0: @pass_wrapped_complex_float(ptr {{.*}} byval([8 x i8]) {{.*}} %_1, i32 noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm1: @pass_wrapped_complex_float(ptr {{.*}} byval([8 x i8]) {{.*}} %_1, i32 inreg noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm2: @pass_wrapped_complex_float(ptr {{.*}} byval([8 x i8]) {{.*}} %_1, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 noundef %_4)
+// regparm3: @pass_wrapped_complex_float(ptr {{.*}} byval([8 x i8]) {{.*}} %_1, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 inreg noundef %_4)
+#[no_mangle]
+pub extern "C" fn pass_wrapped_complex_float(_: S16, _: i32, _: i32, _: i32) {}
+
+#[repr(C)]
+struct S17 {
+    x1: [Complex<i32>; 1],
+}
+
+// regparm0: @pass_wrapped_complex_int(ptr {{.*}} byval([8 x i8]) {{.*}} %_1, i32 noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm1: @pass_wrapped_complex_int(ptr {{.*}} byval([8 x i8]) {{.*}} %_1, i32 inreg noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm2: @pass_wrapped_complex_int(ptr {{.*}} byval([8 x i8]) {{.*}} %_1, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 noundef %_4)
+// regparm3: @pass_wrapped_complex_int(ptr {{.*}} byval([8 x i8]) {{.*}} %_1, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 inreg noundef %_4)
+#[no_mangle]
+pub extern "C" fn pass_wrapped_complex_int(_: S17, _: i32, _: i32, _: i32) {}
+
+#[repr(C)]
+pub struct S18 {
+    pub x1: [f32; 1],
+}
+
+// regparm0: @pass_struct_singleton_array_float(ptr {{.*}} byval([4 x i8]) {{.*}} %_1, i32 noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm1: @pass_struct_singleton_array_float(ptr {{.*}} byval([4 x i8]) {{.*}} %_1, i32 inreg noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm2: @pass_struct_singleton_array_float(ptr {{.*}} byval([4 x i8]) {{.*}} %_1, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 noundef %_4)
+// regparm3: @pass_struct_singleton_array_float(ptr {{.*}} byval([4 x i8]) {{.*}} %_1, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 inreg noundef %_4)
+#[no_mangle]
+pub extern "C" fn pass_struct_singleton_array_float(_: S18, _: i32, _: i32, _: i32) {}
+
+#[repr(C)]
+pub union U1 {
+    pub x1: f32,
+}
+
+// Unions are passed like integers.
+//
+// regparm0: @pass_union_float(ptr {{.*}} byval([4 x i8]) {{.*}} %_1, i32 noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm1: @pass_union_float(i32 inreg %0, i32 noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm2: @pass_union_float(i32 inreg %0, i32 inreg noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm3: @pass_union_float(i32 inreg %0, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 noundef %_4)
+#[no_mangle]
+pub extern "C" fn pass_union_float(_: U1, _: i32, _: i32, _: i32) {}
+
+#[repr(C)]
+struct S5 {
+    x1: f32,
+}
+impl Copy for S5 {}
+
+#[repr(C)]
+pub union U2 {
+    pub x1: S5,
+}
+
+// regparm0: @pass_union_struct_float(ptr {{.*}} byval([4 x i8]) {{.*}} %_1, i32 noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm1: @pass_union_struct_float(i32 inreg %0, i32 noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm2: @pass_union_struct_float(i32 inreg %0, i32 inreg noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm3: @pass_union_struct_float(i32 inreg %0, i32 inreg noundef %_2, i32 inreg noundef %_3, i32 noundef %_4)
+#[no_mangle]
+pub extern "C" fn pass_union_struct_float(_: U2, _: i32, _: i32, _: i32) {}
+
+#[repr(C)]
+union U3 {
+    x1: Complex<f32>,
+}
+
+// regparm0: @pass_union_complex_float(ptr {{.*}} byval([8 x i8]) {{.*}} %_1, i32 noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm1: @pass_union_complex_float(ptr {{.*}} byval([8 x i8]) {{.*}} %_1, i32 noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm2: @pass_union_complex_float([2 x i32] inreg %0, i32 noundef %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm3: @pass_union_complex_float([2 x i32] inreg %0, i32 inreg noundef %_2, i32 noundef %_3, i32 noundef %_4)
+#[no_mangle]
+pub extern "C" fn pass_union_complex_float(_: U3, _: i32, _: i32, _: i32) {}
