@@ -273,3 +273,17 @@ union U3 {
 // regparm3: @pass_union_complex_float([2 x i32] inreg %0, i32 inreg noundef %_2, i32 noundef %_3, i32 noundef %_4)
 #[no_mangle]
 pub extern "C" fn pass_union_complex_float(_: U3, _: i32, _: i32, _: i32) {}
+
+#[repr(C)]
+struct BigStruct {
+    x: [u8; 32],
+}
+
+// regparm0: @force_hidden_sret(ptr{{.*}} sret([32 x i8]){{.*}} %_0, i32 noundef %a, i32 noundef %b, i32 noundef %c)
+// regparm1: @force_hidden_sret(ptr{{.*}} inreg{{.*}} sret([32 x i8]){{.*}} %_0, i32 noundef %a, i32 noundef %b, i32 noundef %c)
+// regparm2: @force_hidden_sret(ptr{{.*}} inreg{{.*}} sret([32 x i8]){{.*}} %_0, i32 inreg noundef %a, i32 noundef %b, i32 noundef %c)
+// regparm3: @force_hidden_sret(ptr{{.*}} inreg{{.*}} sret([32 x i8]){{.*}} %_0, i32 inreg noundef %a, i32 inreg noundef %b, i32 noundef %c)
+#[unsafe(no_mangle)]
+pub extern "C" fn force_hidden_sret(a: i32, b: i32, c: i32) -> BigStruct {
+    loop {}
+}
