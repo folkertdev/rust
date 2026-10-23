@@ -1681,7 +1681,7 @@ fn build_unsafe_binder_type_di_node<'ll, 'tcx>(
 /// global variable (which is simply returned), or an addrspacecast constant expression.
 /// If the given value is an addrspacecast, the cast is removed and the global variable behind
 /// the cast is returned.
-fn find_vtable_behind_cast<'ll>(vtable: &'ll Value) -> &'ll Value {
+pub(crate) fn find_vtable_behind_cast<'ll>(vtable: &'ll Value) -> &'ll Value {
     // The vtable is a global variable, which may be behind an addrspacecast.
     unsafe {
         if let Some(c) = llvm::LLVMIsAConstantExpr(vtable) {

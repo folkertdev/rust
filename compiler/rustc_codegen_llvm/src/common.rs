@@ -22,6 +22,7 @@ use tracing::debug;
 use crate::consts::{IsInitOrFini, IsStatic, const_alloc_to_llvm};
 pub(crate) use crate::context::CodegenCx;
 use crate::context::{GenericCx, SCx};
+use crate::debuginfo::metadata::find_vtable_behind_cast;
 use crate::llvm::{
     self, BasicBlock, ConstantInt, FALSE, TRUE, ToLlvmBool, Type, Value, const_ptr_auth,
 };
@@ -214,14 +215,13 @@ impl<'ll, 'tcx> CodegenCx<'ll, 'tcx> {
                 alloc
             }
             GlobalAlloc::VTable(ty, dyn_ty) => {
-                self.tcx
-                    .global_alloc(self.tcx.vtable_allocation((
-                        ty,
-                        dyn_ty.principal().map(|principal| {
-                            self.tcx.instantiate_bound_regions_with_erased(principal)
-                        }),
-                    )))
-                    .unwrap_memory()
+                let principal = dyn_ty
+                    .principal()
+                    .map(|principal| self.tcx.instantiate_bound_regions_with_erased(principal));
+                let vtable = rustc_codegen_ssa::meth::get_vtable(self, ty, principal);
+                // Unwrap potential addrspacecast.
+                let vtable = find_vtable_behind_cast(vtable);
+                return Ok(vtable);
             }
         };
 
