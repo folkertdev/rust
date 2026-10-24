@@ -12,6 +12,8 @@
 //@[regparm2] compile-flags: -Zregparm=2
 //@[regparm3] compile-flags: -Zregparm=3
 
+// ignore-tidy-file-linelength
+
 #![crate_type = "lib"]
 #![no_core]
 #![feature(no_core, lang_items)]
@@ -20,104 +22,98 @@ extern crate minicore;
 
 use minicore::simd::Simd;
 
+#[repr(C)]
+struct WrapCStruct<T>(T);
+
 // regparm doesn't work for "fastcall" calling conv (only 2 inregs)
-// CHECK: @f1(i32 inreg noundef %_1, i32 inreg noundef %_2, i32 noundef %_3)
+// CHECK: @extern_fastcall(i32 inreg noundef %_1, i32 inreg noundef %_2, i32 noundef %_3)
 #[no_mangle]
-pub extern "fastcall" fn f1(_: i32, _: i32, _: i32) {}
+pub extern "fastcall" fn extern_fastcall(_: i32, _: i32, _: i32) {}
 
-// regparm0: @f3(i32 noundef %_1, i32 noundef %_2, i32 noundef %_3)
-// regparm1: @f3(i32 inreg noundef %_1, i32 noundef %_2, i32 noundef %_3)
-// regparm2: @f3(i32 inreg noundef %_1, i32 inreg noundef %_2, i32 noundef %_3)
-// regparm3: @f3(i32 inreg noundef %_1, i32 inreg noundef %_2, i32 inreg noundef %_3)
+// regparm0: @extern_c(i32 noundef %_1, i32 noundef %_2, i32 noundef %_3)
+// regparm1: @extern_c(i32 inreg noundef %_1, i32 noundef %_2, i32 noundef %_3)
+// regparm2: @extern_c(i32 inreg noundef %_1, i32 inreg noundef %_2, i32 noundef %_3)
+// regparm3: @extern_c(i32 inreg noundef %_1, i32 inreg noundef %_2, i32 inreg noundef %_3)
 #[no_mangle]
-pub extern "C" fn f3(_: i32, _: i32, _: i32) {}
+pub extern "C" fn extern_c(_: i32, _: i32, _: i32) {}
 
-// regparm0: @f4(i32 noundef %_1, i32 noundef %_2, i32 noundef %_3)
-// regparm1: @f4(i32 inreg noundef %_1, i32 noundef %_2, i32 noundef %_3)
-// regparm2: @f4(i32 inreg noundef %_1, i32 inreg noundef %_2, i32 noundef %_3)
-// regparm3: @f4(i32 inreg noundef %_1, i32 inreg noundef %_2, i32 inreg noundef %_3)
+// regparm0: @extern_cdecl(i32 noundef %_1, i32 noundef %_2, i32 noundef %_3)
+// regparm1: @extern_cdecl(i32 inreg noundef %_1, i32 noundef %_2, i32 noundef %_3)
+// regparm2: @extern_cdecl(i32 inreg noundef %_1, i32 inreg noundef %_2, i32 noundef %_3)
+// regparm3: @extern_cdecl(i32 inreg noundef %_1, i32 inreg noundef %_2, i32 inreg noundef %_3)
 #[no_mangle]
-pub extern "cdecl" fn f4(_: i32, _: i32, _: i32) {}
+pub extern "cdecl" fn extern_cdecl(_: i32, _: i32, _: i32) {}
 
-// regparm0: @f5(i32 noundef %_1, i32 noundef %_2, i32 noundef %_3)
-// regparm1: @f5(i32 inreg noundef %_1, i32 noundef %_2, i32 noundef %_3)
-// regparm2: @f5(i32 inreg noundef %_1, i32 inreg noundef %_2, i32 noundef %_3)
-// regparm3: @f5(i32 inreg noundef %_1, i32 inreg noundef %_2, i32 inreg noundef %_3)
+// regparm0: @extern_stdcall(i32 noundef %_1, i32 noundef %_2, i32 noundef %_3)
+// regparm1: @extern_stdcall(i32 inreg noundef %_1, i32 noundef %_2, i32 noundef %_3)
+// regparm2: @extern_stdcall(i32 inreg noundef %_1, i32 inreg noundef %_2, i32 noundef %_3)
+// regparm3: @extern_stdcall(i32 inreg noundef %_1, i32 inreg noundef %_2, i32 inreg noundef %_3)
 #[no_mangle]
-pub extern "stdcall" fn f5(_: i32, _: i32, _: i32) {}
+pub extern "stdcall" fn extern_stdcall(_: i32, _: i32, _: i32) {}
 
 // regparm doesn't work for thiscall
-// CHECK: @f6(i32 noundef %_1, i32 noundef %_2, i32 noundef %_3)
+// CHECK: @extern_thiscall(i32 noundef %_1, i32 noundef %_2, i32 noundef %_3)
 #[no_mangle]
-pub extern "thiscall" fn f6(_: i32, _: i32, _: i32) {}
+pub extern "thiscall" fn extern_thiscall(_: i32, _: i32, _: i32) {}
 
-#[repr(C)]
-struct S1 {
-    x1: i32,
-}
-// regparm0: @f7(i32 noundef %_1, i32 noundef %_2, ptr {{.*}} byval([4 x i8]) {{.*}} %_3, i32 noundef %_4)
-// regparm1: @f7(i32 inreg noundef %_1, i32 noundef %_2, ptr {{.*}} byval([4 x i8]) {{.*}}  %_3, i32 noundef %_4)
-// regparm2: @f7(i32 inreg noundef %_1, i32 inreg noundef %_2, ptr {{.*}} byval([4 x i8]) {{.*}} %_3, i32 noundef %_4)
-// regparm3: @f7(i32 inreg noundef %_1, i32 inreg noundef %_2, ptr {{.*}} byval([4 x i8]) {{.*}} %_3,
+// regparm0: @pass_wrapped_i32(i32 noundef %_1, i32 noundef %_2, ptr {{.*}} byval([4 x i8]) {{.*}} %_3, i32 noundef %_4)
+// regparm1: @pass_wrapped_i32(i32 inreg noundef %_1, i32 noundef %_2, ptr {{.*}} byval([4 x i8]) {{.*}}  %_3, i32 noundef %_4)
+// regparm2: @pass_wrapped_i32(i32 inreg noundef %_1, i32 inreg noundef %_2, ptr {{.*}} byval([4 x i8]) {{.*}} %_3, i32 noundef %_4)
+// regparm3: @pass_wrapped_i32(i32 inreg noundef %_1, i32 inreg noundef %_2, ptr {{.*}} byval([4 x i8]) {{.*}} %_3,
 // regparm3-SAME: i32 inreg noundef %_4)
 #[no_mangle]
-pub extern "C" fn f7(_: i32, _: i32, _: S1, _: i32) {}
+pub extern "C" fn pass_wrapped_i32(_: i32, _: i32, _: WrapCStruct<i32>, _: i32) {}
 
 #[repr(C)]
-struct S2 {
-    x1: i32,
-    x2: i32,
+struct ReprCTuple<T, U> {
+    x1: T,
+    x2: U,
 }
-// regparm0: @f8(i32 noundef %_1, i32 noundef %_2, ptr {{.*}} %_3, i32 noundef %_4)
-// regparm1: @f8(i32 inreg noundef %_1, i32 noundef %_2, ptr {{.*}} %_3, i32 noundef %_4)
-// regparm2: @f8(i32 inreg noundef %_1, i32 inreg noundef %_2, ptr {{.*}} %_3, i32 noundef %_4)
-// regparm3: @f8(i32 inreg noundef %_1, i32 inreg noundef %_2, ptr {{.*}} %_3,
+
+// regparm0: @pass_tuple_i32_i32(i32 noundef %_1, i32 noundef %_2, ptr {{.*}} %_3, i32 noundef %_4)
+// regparm1: @pass_tuple_i32_i32(i32 inreg noundef %_1, i32 noundef %_2, ptr {{.*}} %_3, i32 noundef %_4)
+// regparm2: @pass_tuple_i32_i32(i32 inreg noundef %_1, i32 inreg noundef %_2, ptr {{.*}} %_3, i32 noundef %_4)
+// regparm3: @pass_tuple_i32_i32(i32 inreg noundef %_1, i32 inreg noundef %_2, ptr {{.*}} %_3,
 // regparm3-SAME: i32 inreg noundef %_4)
 #[no_mangle]
-pub extern "C" fn f8(_: i32, _: i32, _: S2, _: i32) {}
+pub extern "C" fn pass_tuple_i32_i32(_: i32, _: i32, _: ReprCTuple<i32, i32>, _: i32) {}
 
-// regparm0: @f9(i1 noundef zeroext %_1, i16 noundef signext %_2, i64 noundef %_3,
+// regparm0: @pass_bool_i16_i64_u128(i1 noundef zeroext %_1, i16 noundef signext %_2, i64 noundef %_3,
 // regparm0-SAME: i128 noundef %_4)
-// regparm1: @f9(i1 inreg noundef zeroext %_1, i16 noundef signext %_2, i64 noundef %_3,
+// regparm1: @pass_bool_i16_i64_u128(i1 inreg noundef zeroext %_1, i16 noundef signext %_2, i64 noundef %_3,
 // regparm1-SAME: i128 noundef %_4)
-// regparm2: @f9(i1 inreg noundef zeroext %_1, i16 inreg noundef signext %_2, i64 noundef %_3,
+// regparm2: @pass_bool_i16_i64_u128(i1 inreg noundef zeroext %_1, i16 inreg noundef signext %_2, i64 noundef %_3,
 // regparm2-SAME: i128 noundef %_4)
-// regparm3: @f9(i1 inreg noundef zeroext %_1, i16 inreg noundef signext %_2, i64 noundef %_3,
+// regparm3: @pass_bool_i16_i64_u128(i1 inreg noundef zeroext %_1, i16 inreg noundef signext %_2, i64 noundef %_3,
 // regparm3-SAME: i128 noundef %_4)
 #[no_mangle]
-pub extern "C" fn f9(_: bool, _: i16, _: i64, _: u128) {}
+pub extern "C" fn pass_bool_i16_i64_u128(_: bool, _: i16, _: i64, _: u128) {}
 
-// regparm0: @f10(float noundef %_1, double noundef %_2, i1 noundef zeroext %_3,
+// regparm0: @pass_f32_f64_bool_i16(float noundef %_1, double noundef %_2, i1 noundef zeroext %_3,
 // regparm0-SAME: i16 noundef signext %_4)
-// regparm1: @f10(float noundef %_1, double noundef %_2, i1 inreg noundef zeroext %_3,
+// regparm1: @pass_f32_f64_bool_i16(float noundef %_1, double noundef %_2, i1 inreg noundef zeroext %_3,
 // regparm1-SAME: i16 noundef signext %_4)
-// regparm2: @f10(float noundef %_1, double noundef %_2, i1 inreg noundef zeroext %_3,
+// regparm2: @pass_f32_f64_bool_i16(float noundef %_1, double noundef %_2, i1 inreg noundef zeroext %_3,
 // regparm2-SAME: i16 inreg noundef signext %_4)
-// regparm3: @f10(float noundef %_1, double noundef %_2, i1 inreg noundef zeroext %_3,
+// regparm3: @pass_f32_f64_bool_i16(float noundef %_1, double noundef %_2, i1 inreg noundef zeroext %_3,
 // regparm3-SAME: i16 inreg noundef signext %_4)
 #[no_mangle]
-pub extern "C" fn f10(_: f32, _: f64, _: bool, _: i16) {}
+pub extern "C" fn pass_f32_f64_bool_i16(_: f32, _: f64, _: bool, _: i16) {}
 
-#[allow(non_camel_case_types)]
-type __m128 = Simd<f32, 4>;
-
-// regparm0: @f11(i32 noundef %_1, <4 x float> %_2, i32 noundef %_3, i32 noundef %_4)
-// regparm1: @f11(i32 inreg noundef %_1, <4 x float> %_2, i32 noundef %_3, i32 noundef %_4)
-// regparm2: @f11(i32 inreg noundef %_1, <4 x float> %_2, i32 inreg noundef %_3,
+// regparm0: @pass_f32x4(i32 noundef %_1, <4 x float> %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm1: @pass_f32x4(i32 inreg noundef %_1, <4 x float> %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm2: @pass_f32x4(i32 inreg noundef %_1, <4 x float> %_2, i32 inreg noundef %_3,
 // regparm2-SAME: i32 noundef %_4)
-// regparm3: @f11(i32 inreg noundef %_1, <4 x float> %_2, i32 inreg noundef %_3,
+// regparm3: @pass_f32x4(i32 inreg noundef %_1, <4 x float> %_2, i32 inreg noundef %_3,
 // regparm3-SAME: i32 inreg noundef %_4)
 #[no_mangle]
-pub extern "C" fn f11(_: i32, _: __m128, _: i32, _: i32) {}
+pub extern "C" fn pass_f32x4(_: i32, _: Simd<f32, 4>, _: i32, _: i32) {}
 
-#[allow(non_camel_case_types)]
-type __m256 = Simd<f32, 8>;
-
-// regparm0: @f12(i32 noundef %_1, <8 x float> %_2, i32 noundef %_3, i32 noundef %_4)
-// regparm1: @f12(i32 inreg noundef %_1, <8 x float> %_2, i32 noundef %_3, i32 noundef %_4)
-// regparm2: @f12(i32 inreg noundef %_1, <8 x float> %_2, i32 inreg noundef %_3,
+// regparm0: @pass_f32x8(i32 noundef %_1, <8 x float> %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm1: @pass_f32x8(i32 inreg noundef %_1, <8 x float> %_2, i32 noundef %_3, i32 noundef %_4)
+// regparm2: @pass_f32x8(i32 inreg noundef %_1, <8 x float> %_2, i32 inreg noundef %_3,
 // regparm2-SAME: i32 noundef %_4)
-// regparm3: @f12(i32 inreg noundef %_1, <8 x float> %_2, i32 inreg noundef %_3,
+// regparm3: @pass_f32x8(i32 inreg noundef %_1, <8 x float> %_2, i32 inreg noundef %_3,
 // regparm3-SAME: i32 inreg noundef %_4)
 #[no_mangle]
-pub extern "C" fn f12(_: i32, _: __m256, _: i32, _: i32) {}
+pub extern "C" fn pass_f32x8(_: i32, _: Simd<f32, 8>, _: i32, _: i32) {}
