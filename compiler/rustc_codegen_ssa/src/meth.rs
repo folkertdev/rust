@@ -1,6 +1,7 @@
-use rustc_middle::ty::{self, GenericArgKind, Ty, TyCtxt};
+use rustc_attr_ir::LangItem;
+use rustc_middle::ty::{self, COMMON_VTABLE_ENTRIES_DROPINPLACE, GenericArgKind, Ty, TyCtxt};
 use rustc_session::config::Lto;
-use rustc_span::bug;
+use rustc_span::{DUMMY_SP, bug};
 use rustc_symbol_mangling::typeid_for_trait_ref;
 use rustc_target::callconv::FnAbi;
 use rustc_trait_selection::traits::vtable;
@@ -61,14 +62,26 @@ impl<'a, 'tcx> VirtualIndex {
         {
             if let Some(trait_ref) = dyn_trait_in_self(bx.tcx(), ty) {
                 let typeid = typeid_for_trait_ref(bx.tcx(), trait_ref);
-                let func = bx.type_checked_load(llvtable, vtable_byte_offset, typeid.as_bytes());
-                return func;
-            } else if nonnull {
-                bug!("load nonnull value from a vtable without a principal trait")
-            }
-        }
 
-        self.load_field(bx, llvtable, llty, nonnull)
+                bx.type_checked_load(llvtable, vtable_byte_offset, typeid.as_bytes())
+            } else if nonnull {
+                bug!("cannot load nonnull function pointer from a vtable without a principal trait")
+            } else if self.0 == COMMON_VTABLE_ENTRIES_DROPINPLACE as u64 {
+                // The only function pointer we can load from a non-principal trait is drop. We add
+                // !type metadata for MetaSized in get_vtable so that we can use its type id here
+                // for the checked load.
+                let def_id = bx.tcx().require_lang_item(LangItem::MetaSized, DUMMY_SP);
+                let meta_sized =
+                    ty::ExistentialTraitRef::new(bx.tcx(), def_id, ty::GenericArgs::empty());
+                let typeid = typeid_for_trait_ref(bx.tcx(), meta_sized);
+
+                bx.type_checked_load(llvtable, vtable_byte_offset, typeid.as_bytes())
+            } else {
+                bug!("cannot load function pointer from a vtable without a principal trait")
+            }
+        } else {
+            self.load_field(bx, llvtable, llty, nonnull)
+        }
     }
 
     pub(crate) fn get_optional_fn<Bx: BuilderMethods<'a, 'tcx>>(
@@ -158,14 +171,20 @@ pub(crate) fn get_vtable<'tcx, Cx: CodegenMethods<'tcx>>(
     let vtable_allocation = tcx.global_alloc(vtable_alloc_id).unwrap_memory();
     let vtable = cx.static_addr_of(vtable_allocation, Some("vtable"));
 
-    if let Some(trait_ref) = trait_ref
-        && cx.sess().opts.unstable_opts.virtual_function_elimination
-        && cx.sess().lto() == Lto::Fat
-    {
-        let key = trait_ref.with_self_ty(tcx, self_ty);
-        let trait_hierarchy = vtable::vtable_prefix_traits(tcx, key);
+    if cx.sess().lto() == Lto::Fat && cx.sess().opts.unstable_opts.virtual_function_elimination {
+        if let Some(trait_ref) = trait_ref {
+            let key = trait_ref.with_self_ty(tcx, self_ty);
+            let trait_hierarchy = vtable::vtable_prefix_traits(tcx, key);
 
-        cx.apply_vcall_visibility_metadata(&trait_hierarchy, vtable);
+            cx.apply_vcall_visibility_metadata(&trait_hierarchy, vtable);
+        } else {
+            // If there is no principal trait, add !type for MetaSized, so that we can use it for
+            // checked loads of drop_in_place.
+            let def_id = tcx.require_lang_item(LangItem::MetaSized, DUMMY_SP);
+            let meta_sized = ty::ExistentialTraitRef::new(tcx, def_id, ty::GenericArgs::empty());
+
+            cx.apply_vcall_visibility_metadata(&[meta_sized], vtable);
+        }
     }
 
     cx.create_vtable_debuginfo(self_ty, trait_ref, vtable);
