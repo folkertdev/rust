@@ -234,10 +234,16 @@ fn emit_aapcs_va_arg<'ll, 'tcx>(
     let zero = bx.const_i32(0);
     let offset_align = Align::FOUR;
 
+    // A complex float is a homogeneous floating-point aggregate with 2 members. Each member
+    // occupies its own 16-byte slot in the FP/SIMD register save area.
+    let hfa_member = layout.is_complex_number(bx.cx).then(|| layout.field(bx.cx, 0));
+
     let gr_type = layout.ty.is_any_ptr() || layout.ty.is_integral();
     let (reg_off, reg_top, slot_size) = if gr_type {
         let nreg = layout.size.bytes().div_ceil(8);
         (gr_offs, gr_top, nreg * 8)
+    } else if hfa_member.is_some() {
+        (vr_offs, vr_top, 2 * 16)
     } else {
         let nreg = layout.size.bytes().div_ceil(16);
         (vr_offs, vr_top, nreg * 16)
@@ -272,13 +278,30 @@ fn emit_aapcs_va_arg<'ll, 'tcx>(
 
     // reg_value = *(@top + reg_off_v);
     let mut reg_addr = bx.ptradd(top, reg_off_v);
-    if bx.tcx().sess.target.endian == Endian::Big && layout.size.bytes() != slot_size {
-        // On big-endian systems the value is right-aligned in its slot.
-        let offset = bx.const_i32((slot_size - layout.size.bytes()) as i32);
-        reg_addr = bx.ptradd(reg_addr, offset);
-    }
-    let reg_type = layout.llvm_type(bx);
-    let reg_value = bx.load(reg_type, reg_addr, layout.align);
+    let reg_value = if let Some(member) = hfa_member {
+        // Collect the members from their separate slots into a temporary.
+        let tmp = bx.alloca(layout.size, layout.align);
+        for i in 0..2u64 {
+            let mut member_addr = bx.ptradd(reg_addr, bx.const_i32(16 * i as i32));
+            if bx.tcx().sess.target.endian == Endian::Big && member.size.bytes() != 16 {
+                // On big-endian systems the value is right-aligned in its slot.
+                let offset = bx.const_i32((16 - member.size.bytes()) as i32);
+                member_addr = bx.ptradd(member_addr, offset);
+            }
+            let value = bx.load(member.llvm_type(bx), member_addr, member.align);
+            let dest = bx.inbounds_ptradd(tmp, bx.const_usize(i * member.size.bytes()));
+            bx.store(value, dest, member.align);
+        }
+        bx.load(layout.llvm_type(bx), tmp, layout.align)
+    } else {
+        if bx.tcx().sess.target.endian == Endian::Big && layout.size.bytes() != slot_size {
+            // On big-endian systems the value is right-aligned in its slot.
+            let offset = bx.const_i32((slot_size - layout.size.bytes()) as i32);
+            reg_addr = bx.ptradd(reg_addr, offset);
+        }
+        let reg_type = layout.llvm_type(bx);
+        bx.load(reg_type, reg_addr, layout.align)
+    };
     bx.br(end);
 
     // On Stack block
