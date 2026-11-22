@@ -1261,8 +1261,9 @@ pub(super) fn emit_va_arg<'ll, 'tcx>(
         Arch::Sparc => {
             std::assert_matches!(stability, CVariadicStatus::Unstable { .. });
 
-            // f128 is passed indirectly.
+            // f128 and complex floats are passed indirectly.
             let pass_mode = match layout.layout.backend_repr() {
+                _ if layout.complex_float(bx.cx).is_some() => PassMode::Indirect,
                 BackendRepr::Scalar(scalar) => match scalar.primitive() {
                     Primitive::Float(Float::F128) => PassMode::Indirect,
                     _ => PassMode::Direct,
