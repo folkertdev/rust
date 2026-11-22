@@ -477,7 +477,9 @@ fn emit_s390x_va_arg<'ll, 'tcx>(
 
     // FIXME: vector ABI not yet supported.
     let target_ty_size = layout.size.bytes();
-    let indirect: bool = target_ty_size > 8 || !target_ty_size.is_power_of_two();
+    // Complex numbers are always passed by reference.
+    let indirect: bool =
+        target_ty_size > 8 || !target_ty_size.is_power_of_two() || layout.is_complex_number(bx.cx);
     let unpadded_size = if indirect { 8 } else { target_ty_size };
     let padded_size = 8;
     let padding = padded_size - unpadded_size;
