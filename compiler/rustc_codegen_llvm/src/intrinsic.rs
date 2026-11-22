@@ -209,6 +209,12 @@ impl<'ll, 'tcx> Builder<'_, 'll, 'tcx> {
                     feature_err(self.sess(), feature, span, msg).emit();
                 }
 
+                if result_layout.complex_float(self.cx).is_none() {
+                    // Complex floats are the only non-scalar types that implement `VaArgSafe`.
+                    let llval = emit_va_arg(self, args[0], result_layout);
+                    return self.llvm_value_to_intrinsicresult(llval, result_layout, result_place);
+                }
+
                 let BackendRepr::Scalar(scalar) = result_layout.backend_repr else {
                     bug!("the va_arg intrinsic does not support non-scalar types")
                 };

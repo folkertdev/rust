@@ -5,11 +5,13 @@
     c_variadic_int128,
     const_destruct,
     const_raw_ptr_comparison,
+    complex_numbers,
     f128
 )]
 #![allow(unused_features)] // c_variadic_int128 is only used on 64-bit targets.
 
 use std::ffi::*;
+use std::num::Complex;
 
 // In rustc we implement `va_arg` for the callee reading from a VaList, but still rely on LLVM
 // for exactly how to pass c-variadic arguments and for constructing the VaList. Here we test
@@ -61,6 +63,25 @@ macro_rules! roundtrip_ptr {
     };
 }
 
+// `Complex` does not implement `PartialEq` in const contexts, so compare the components.
+macro_rules! roundtrip_complex {
+    ($ty:ty, $a:expr, $b:expr) => {
+        const {
+            let a: Complex<$ty> = $a;
+            let b: Complex<$ty> = $b;
+            let (x, y) = variadic::<Complex<$ty>>(a, 0xAAAA_AAAAu32, b);
+            assert!(a.re == x.re && a.im == x.im);
+            assert!(b.re == y.re && b.im == y.im);
+        }
+
+        let a: Complex<$ty> = $a;
+        let b: Complex<$ty> = $b;
+        let (x, y) = variadic::<Complex<$ty>>(a, 0xAAAA_AAAAu32, b);
+        assert!(a.re == x.re && a.im == x.im);
+        assert!(b.re == y.re && b.im == y.im);
+    };
+}
+
 fn main() {
     unsafe {
         roundtrip!(i32, -1, -2);
@@ -79,6 +100,9 @@ fn main() {
 
         roundtrip!(f64, 3.14, 6.28);
         roundtrip!(c_double, 3.14, 6.28);
+
+        roundtrip_complex!(f32, Complex::new(1.5, -2.5), Complex::new(f32::MIN, f32::MAX));
+        roundtrip_complex!(f64, Complex::new(1.5, -2.5), Complex::new(f64::MIN, f64::MAX));
 
         static mut A: u32 = 1u32;
         static mut B: u32 = 2u32;
@@ -145,6 +169,7 @@ fn main() {
                 ),
             ) => {
                 roundtrip!(f128, -1.0, f128::MAX);
+                roundtrip_complex!(f128, Complex::new(1.5, -2.5), Complex::new(f128::MIN, f128::MAX));
             }
             _ => { /* unsupported */ }
         }

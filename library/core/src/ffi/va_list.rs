@@ -465,6 +465,10 @@ cfg_select! {
         #[unstable_feature_bound(f128)]
         #[unstable(feature = "f128", issue = "116909")]
         unsafe impl VaArgSafe for f128 {}
+
+        #[unstable_feature_bound(complex_numbers)]
+        #[unstable(feature = "complex_numbers", issue = "154023")]
+        unsafe impl VaArgSafe for crate::num::Complex<f128> {}
     }
     _ => { /* unsupported */ }
 }
@@ -474,14 +478,30 @@ cfg_select! {
         #[unstable_feature_bound(powerpc_ppcf128)]
         #[unstable(feature = "powerpc_ppcf128", issue = "163323")]
         unsafe impl VaArgSafe for crate::arch::powerpc::ppcf128 {}
+
+        #[unstable_feature_bound(complex_numbers)]
+        #[unstable(feature = "complex_numbers", issue = "154023")]
+        unsafe impl VaArgSafe for crate::num::Complex<crate::arch::powerpc::ppcf128> {}
     }
     target_arch = "powerpc64" => {
         #[unstable_feature_bound(powerpc_ppcf128)]
         #[unstable(feature = "powerpc_ppcf128", issue = "163323")]
         unsafe impl VaArgSafe for crate::arch::powerpc64::ppcf128 {}
+
+        #[unstable_feature_bound(complex_numbers)]
+        #[unstable(feature = "complex_numbers", issue = "154023")]
+        unsafe impl VaArgSafe for crate::num::Complex<crate::arch::powerpc64::ppcf128> {}
     }
     _ => { /* ppcf128 is not defined */ }
 }
+
+#[unstable_feature_bound(complex_numbers)]
+#[unstable(feature = "complex_numbers", issue = "154023")]
+unsafe impl VaArgSafe for crate::num::Complex<f32> {}
+
+#[unstable_feature_bound(complex_numbers)]
+#[unstable(feature = "complex_numbers", issue = "154023")]
+unsafe impl VaArgSafe for crate::num::Complex<f64> {}
 
 #[unstable(feature = "c_variadic_va_arg_safe", issue = "162911", implied_by = "c_variadic")]
 unsafe impl<T> VaArgSafe for *mut T {}
