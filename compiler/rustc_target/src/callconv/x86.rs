@@ -191,6 +191,9 @@ where
         let byval_align = if arg.layout.align < align_4 {
             // (1.)
             align_4
+        } else if !t.is_like_darwin && arg.layout.complex_float(cx) == Some(Float::F128) {
+            // GCC aligns `_Complex _Float128` to 16 bytes, like a scalar `f128`.
+            align_16
         } else if t.is_like_darwin && contains_vector(cx, arg.layout) {
             // (3.)
             align_16

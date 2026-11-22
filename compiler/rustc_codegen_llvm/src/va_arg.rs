@@ -1087,12 +1087,14 @@ pub(super) fn emit_va_arg<'ll, 'tcx>(
 
     match target.arch {
         Arch::X86 => {
-            // A small deviation from clang to get the right behavior for f128.
+            // A small deviation from clang to get the right behavior for f128 and Complex<f128>.
             //
             // Note that i64 and f64 have an alignment of only 4 on this architecture.
             // We need to be careful when adding future types with an alignment bigger
             // than 4 (e.g. i128), clang has a bunch of custom logic for them.
-            let allow_higher_align = if layout.ty == bx.tcx().types.f128 {
+            let allow_higher_align = if layout.ty == bx.tcx().types.f128
+                || layout.complex_float(bx.cx) == Some(Float::F128)
+            {
                 AllowHigherAlign::Yes
             } else {
                 AllowHigherAlign::No
