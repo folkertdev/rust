@@ -592,6 +592,15 @@ fn emit_x86_64_sysv64_va_arg<'ll, 'tcx>(
     // ```
     let layout = layout.peel_transparent_wrappers_from_non_1zst(bx.cx);
 
+    // A `Complex<f128>` is larger than 16 bytes, so it is passed in memory.
+    if layout.complex_float(bx.cx) == Some(Float::F128) {
+        let mem_addr = x86_64_sysv64_va_arg_from_memory(bx, va_list_addr, layout);
+        return bx.load(layout.llvm_type(bx), mem_addr, layout.align);
+    }
+
+    // A `Complex<f32>` occupies a single eightbyte, so it is passed in one SSE register.
+    let is_complex_f32 = layout.complex_float(bx.cx) == Some(Float::F32);
+
     // AMD64-ABI 3.5.7p5: Step 1. Determine whether type may be passed
     // in the registers. If not go to step 7.
 
@@ -617,6 +626,9 @@ fn emit_x86_64_sysv64_va_arg<'ll, 'tcx>(
     match layout.layout.backend_repr() {
         BackendRepr::Scalar(scalar) => {
             registers_for_primitive(scalar.primitive());
+        }
+        BackendRepr::ScalarPair { .. } if is_complex_f32 => {
+            num_fp_registers += 1;
         }
         BackendRepr::ScalarPair { a: scalar1, b: scalar2, b_offset: _ } => {
             registers_for_primitive(scalar1.primitive());
@@ -697,6 +709,9 @@ fn emit_x86_64_sysv64_va_arg<'ll, 'tcx>(
             }
             Primitive::Float(_) => bx.inbounds_ptradd(reg_save_area_v, fp_offset_v),
         },
+        BackendRepr::ScalarPair { .. } if is_complex_f32 => {
+            bx.inbounds_ptradd(reg_save_area_v, fp_offset_v)
+        }
         BackendRepr::ScalarPair { a: scalar1, b: scalar2, b_offset: offset } => {
             let ty_lo = bx.cx().scalar_pair_element_backend_type(layout, 0, false);
             let ty_hi = bx.cx().scalar_pair_element_backend_type(layout, 1, false);
