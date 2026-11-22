@@ -99,8 +99,9 @@ fn get_param_type_alignment<'ll, 'tcx>(
                 Integer::I128 => return Align::EIGHT,
             },
             Primitive::Float(float) => match float {
-                Float::F16 | Float::F16B | Float::F32 | Float::X87F80 => unreachable!(),
-                Float::F64 | Float::F128 => { /* fall through */ }
+                Float::F16 | Float::F16B | Float::X87F80 => unreachable!(),
+                // An `f32` is only read as a component of a complex number.
+                Float::F32 | Float::F64 | Float::F128 => { /* fall through */ }
                 Float::PpcF128 => {
                     return if is_powerpc_softfloat_abi(&bx.cx.tcx.sess.target) {
                         Align::FOUR
@@ -1118,6 +1119,28 @@ fn emit_xtensa_va_arg<'ll, 'tcx>(
     bx.load(layout.llvm_type(bx), value_ptr, layout.align)
 }
 
+/// Read a complex number as two separate c-variadic arguments, one per component.
+fn emit_split_complex_va_arg<'ll, 'tcx>(
+    bx: &mut Builder<'_, 'll, 'tcx>,
+    list: OperandRef<'tcx, Value<'ll>>,
+    layout: TyAndLayout<'tcx>,
+    emit_component: impl Fn(
+        &mut Builder<'_, 'll, 'tcx>,
+        OperandRef<'tcx, Value<'ll>>,
+        TyAndLayout<'tcx>,
+    ) -> Value<'ll>,
+) -> Value<'ll> {
+    let component = layout.field(bx.cx, 0);
+    let re = emit_component(bx, list, component);
+    let im = emit_component(bx, list, component);
+
+    let tmp = bx.alloca(layout.size, layout.align);
+    bx.store(re, tmp, component.align);
+    let im_addr = bx.inbounds_ptradd(tmp, bx.const_usize(component.size.bytes()));
+    bx.store(im, im_addr, component.align);
+    bx.load(layout.llvm_type(bx), tmp, layout.align)
+}
+
 /// Determine the va_arg implementation to use. The LLVM va_arg instruction
 /// is lacking in some instances, so we should only use it as a fallback.
 ///
@@ -1202,16 +1225,34 @@ pub(super) fn emit_va_arg<'ll, 'tcx>(
         }
         Arch::S390x => emit_s390x_va_arg(bx, addr, layout),
         Arch::PowerPC => emit_powerpc_va_arg(bx, addr, layout),
-        Arch::PowerPC64 => emit_ptr_va_arg(
-            bx,
-            addr,
-            layout,
-            PassMode::Direct,
-            SlotSize::Bytes8,
-            AllowHigherAlign::Yes,
-            // ForceRightAdjust only takes effect on big-endian architectures.
-            ForceRightAdjust::Yes,
-        ),
+        Arch::PowerPC64 => {
+            // A complex number is passed as two separate arguments, so read each component from
+            // its own slot(s), with the alignment of the component.
+            if layout.is_complex_number(bx.cx) {
+                return emit_split_complex_va_arg(bx, addr, layout, |bx, addr, component| {
+                    emit_ptr_va_arg(
+                        bx,
+                        addr,
+                        component,
+                        PassMode::Direct,
+                        SlotSize::Bytes8,
+                        AllowHigherAlign::Yes,
+                        ForceRightAdjust::Yes,
+                    )
+                });
+            }
+
+            emit_ptr_va_arg(
+                bx,
+                addr,
+                layout,
+                PassMode::Direct,
+                SlotSize::Bytes8,
+                AllowHigherAlign::Yes,
+                // ForceRightAdjust only takes effect on big-endian architectures.
+                ForceRightAdjust::Yes,
+            )
+        }
         Arch::RiscV32 if target.llvm_abiname == LlvmAbi::Ilp32e => {
             std::assert_matches!(stability, CVariadicStatus::Unstable { .. });
             // FIXME: clang manually adjusts the alignment for this ABI. It notes:
