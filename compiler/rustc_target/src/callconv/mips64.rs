@@ -105,7 +105,7 @@ where
     }
 }
 
-fn classify_arg<'a, Ty, C>(cx: &C, arg: &mut ArgAbi<'a, Ty>, offset: &mut Size)
+fn classify_arg<'a, Ty, C>(cx: &C, arg: &mut ArgAbi<'a, Ty>, offset: &mut Size, is_variadic: bool)
 where
     Ty: TyAbiInterface<'a, C> + Copy,
     C: HasDataLayout,
@@ -148,12 +148,10 @@ where
             }
             Numeric::Float(Float::F32 | Float::F64) => {
                 // Only pass a Complex<f32>/Complex<f64> in FPRs when two argument slots are free.
-                if curr_offset.bytes() / slot.bytes() + 2 <= NUM_ARG_SLOTS {
+                // C-variadic arguments are never passed in FPRs.
+                if !is_variadic && curr_offset.bytes() / slot.bytes() + 2 <= NUM_ARG_SLOTS {
                     // Both components claim a slot, even a Complex<f32> which could fit in one
                     // slot.
-                    //
-                    // FIXME(complex_numbers): c-variadic arguments are passed in GPRs, so need a
-                    // special carve-out here and Complex<f32> is bitpacked into one 64-bit GPR.
                     *offset = curr_offset + slot * 2;
                     let unit = Reg { kind: RegKind::Float, size: component.size() };
                     let cast_target = CastTarget::from(Uniform::new(unit, size));
@@ -246,10 +244,11 @@ where
         classify_ret(cx, &mut fn_abi.ret, &mut offset);
     }
 
-    for arg in fn_abi.args.iter_mut() {
+    let fixed_count = fn_abi.fixed_count as usize;
+    for (i, arg) in fn_abi.args.iter_mut().enumerate() {
         if arg.is_ignore() || !arg.layout.is_sized() {
             continue;
         }
-        classify_arg(cx, arg, &mut offset);
+        classify_arg(cx, arg, &mut offset, i >= fixed_count);
     }
 }
