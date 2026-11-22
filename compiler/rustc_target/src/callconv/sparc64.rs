@@ -108,6 +108,7 @@ fn classify_arg<'a, Ty, C>(
     arg: &mut ArgAbi<'a, Ty>,
     in_registers_max: Size,
     total_double_word_count: &mut usize,
+    is_variadic: bool,
 ) where
     Ty: TyAbiInterface<'a, C> + Copy,
     C: HasDataLayout,
@@ -148,6 +149,12 @@ fn classify_arg<'a, Ty, C>(
 
     // Compatible with GCC and Clang 24.
     if let Some(Numeric::Int(Integer::I8 | Integer::I16, _)) = arg.layout.complex_number(cx) {
+        arg.cast_to(Reg { kind: RegKind::Integer, size: total });
+        return;
+    }
+
+    // A c-variadic `Complex<f32>` is passed in a single integer register.
+    if is_variadic && let Some(Numeric::Float(Float::F32)) = arg.layout.complex_number(cx) {
         arg.cast_to(Reg { kind: RegKind::Integer, size: total });
         return;
     }
@@ -209,14 +216,15 @@ where
 {
     if !fn_abi.ret.is_ignore() && fn_abi.ret.layout.is_sized() {
         // A return value of 32 bytes or smaller is passed via registers.
-        classify_arg(cx, &mut fn_abi.ret, Size::from_bytes(32), &mut 0);
+        classify_arg(cx, &mut fn_abi.ret, Size::from_bytes(32), &mut 0, false);
     }
 
     // sparc64-unknown-linux-{gnu,musl,uclibc} doesn't ignore ZSTs.
     let passes_zsts = matches!(cx.target_spec().os, Os::Linux);
 
+    let fixed_count = fn_abi.fixed_count as usize;
     let mut double_word_count = 0;
-    for arg in fn_abi.args.iter_mut() {
+    for (i, arg) in fn_abi.args.iter_mut().enumerate() {
         if !arg.layout.is_sized() {
             continue;
         }
@@ -228,6 +236,6 @@ where
             continue;
         }
         // An argument of 16 bytes or smaller is passed via registers.
-        classify_arg(cx, arg, Size::from_bytes(16), &mut double_word_count);
+        classify_arg(cx, arg, Size::from_bytes(16), &mut double_word_count, i >= fixed_count);
     }
 }
