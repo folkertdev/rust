@@ -336,12 +336,25 @@ fn emit_powerpc_va_arg<'ll, 'tcx>(
     // All instances of VaArgSafe are passed directly.
     let is_indirect = false;
 
+    // Complex floats are passed in GPRs. Like `i64`, a value that takes 2 GPRs is aligned to an
+    // even register and to 8 bytes on the stack. Larger complex values are only 4-byte aligned.
+    let is_complex = layout.is_complex_number(bx.cx);
     let is_int = match layout.layout.backend_repr() {
+        _ if is_complex => true,
         BackendRepr::Scalar(scalar) => match scalar.primitive() {
             rustc_abi::Primitive::Int(_, _) | rustc_abi::Primitive::Pointer(_) => true,
             rustc_abi::Primitive::Float(_) => false,
         },
-        _ => unreachable!("all instances of VaArgSafe are represented as scalars"),
+        _ => {
+            unreachable!("all instances of VaArgSafe are represented as scalars or complex numbers")
+        }
+    };
+    let align = if !is_complex {
+        get_param_type_alignment(bx, layout)
+    } else if layout.size.bytes() == 8 {
+        Align::EIGHT
+    } else {
+        Align::FOUR
     };
 
     let is_passed_in_fprs = !(is_int || is_powerpc_softfloat_abi(&bx.cx.tcx.sess.target));
@@ -416,7 +429,6 @@ fn emit_powerpc_va_arg<'ll, 'tcx>(
         let mut overflow_area = bx.load(bx.type_ptr(), overflow_area_ptr, ptr_align_abi);
 
         // Round up address of argument to alignment
-        let align = get_param_type_alignment(bx, layout);
         if align > overflow_area_align {
             overflow_area = round_pointer_up_to_alignment(bx, overflow_area, align);
         }
@@ -438,7 +450,6 @@ fn emit_powerpc_va_arg<'ll, 'tcx>(
     let val_type = layout.llvm_type(bx);
     let val_addr =
         if is_indirect { bx.load(bx.cx.type_ptr(), val_addr, ptr_align_abi) } else { val_addr };
-    let align = get_param_type_alignment(bx, layout);
     bx.load(val_type, val_addr, align)
 }
 
